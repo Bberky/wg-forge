@@ -1,0 +1,13 @@
+.stack-work/
+*~
+
+# hpack-generated; package.yaml is the source of truth
+*.cabal
+
+# Agentic / AI tool files
+CLAUDE.md
+.claude/
+.cursor/
+.aider*
+.copilot/
+.github/copilot-instructions.md

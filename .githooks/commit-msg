@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MSG_FILE="$1"
+
+# Read all non-comment lines into an indexed array
+lines=()
+while IFS= read -r line; do
+    [[ "$line" =~ ^# ]] && continue
+    lines+=("$line")
+done < "$MSG_FILE"
+
+# Find header: first non-empty line
+header=""
+header_idx=-1
+for i in "${!lines[@]}"; do
+    if [[ -n "${lines[$i]}" ]]; then
+        header="${lines[$i]}"
+        header_idx=$i
+        break
+    fi
+done
+
+if [[ -z "$header" ]]; then
+    echo "commit-msg: commit message is empty"
+    exit 1
+fi
+
+# Skip auto-generated commit messages
+if [[ "$header" =~ ^(Merge\ |fixup\!\ |squash\!\ |Revert\ \") ]]; then
+    exit 0
+fi
+
+TYPES="feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert"
+CC_PATTERN="^($TYPES)(\([a-z0-9-]+\))?!?: [a-z].{2,}$"
+
+# Validate header format (exit immediately — remaining checks would be noise)
+if ! [[ "$header" =~ $CC_PATTERN ]]; then
+    echo "commit-msg: invalid commit message header"
+    echo ""
+    echo "  got:      $header"
+    echo ""
+    echo "  format:   <type>(<scope>): <description>"
+    echo "  example:  feat(cli): add --quiet flag"
+    echo ""
+    echo "  types:    feat fix docs style refactor perf test build ci chore revert"
+    echo "  rules:    description starts lowercase, ≥3 chars, ≤72 char total header, no trailing period"
+    exit 1
+fi
+
+failed=0
+
+# Trailing period
+if [[ "$header" == *. ]]; then
+    echo "commit-msg: subject must not end with a period"
+    echo "  got: $header"
+    failed=1
+fi
+
+# Header length
+if [[ ${#header} -gt 72 ]]; then
+    echo "commit-msg: header too long (${#header}/72 chars)"
+    echo "  got: $header"
+    failed=1
+fi
+
+# Body separator: line immediately after header must be blank if body/footer present
+if [[ $header_idx -ge 0 && $((header_idx + 1)) -lt ${#lines[@]} ]]; then
+    next="${lines[$((header_idx + 1))]}"
+    if [[ -n "$next" ]]; then
+        echo "commit-msg: missing blank line after header (required before body/footer)"
+        echo "  found on line 2: $next"
+        failed=1
+    fi
+fi
+
+[[ $failed -eq 0 ]] || exit 1
+exit 0

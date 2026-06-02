@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+staged_hs=()
+while IFS= read -r path; do
+    [[ -n "$path" ]] && staged_hs+=("$path")
+done < <(git diff --cached --name-only --diff-filter=ACMR | grep '\.hs$' || true)
+
+[[ ${#staged_hs[@]} -eq 0 ]] && exit 0
+
+for tool in fourmolu hlint; do
+    if ! command -v "$tool" &>/dev/null; then
+        echo "pre-commit: '$tool' not found on PATH"
+        echo "  hint: run 'bash scripts/install-hooks.sh' to install pinned dev tools"
+        exit 1
+    fi
+done
+
+failed=0
+
+for path in "${staged_hs[@]}"; do
+    fmt_out="$(git show ":${path}" | fourmolu --mode check --stdin-input-file "${path}" 2>&1)" || {
+        echo "-- ${path} (fourmolu: not formatted)"
+        echo "${fmt_out}"
+        echo "   fix: fourmolu --mode inplace ${path}"
+        echo ""
+        failed=1
+    }
+
+    lint_out="$(git show ":${path}" | hlint - 2>&1)" || {
+        echo "-- ${path} (hlint)"
+        echo "${lint_out}"
+        echo ""
+        failed=1
+    }
+done
+
+exit "${failed}"

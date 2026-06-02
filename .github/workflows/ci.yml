@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: Format (fourmolu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read tool versions
+        id: versions
+        run: |
+          source tools/versions.env
+          echo "fourmolu=$FOURMOLU_VERSION" >> "$GITHUB_OUTPUT"
+      - uses: haskell-actions/run-fourmolu@v12
+        with:
+          version: ${{ steps.versions.outputs.fourmolu }}
+          pattern: |
+            src/**/*.hs
+            app/**/*.hs
+            test/**/*.hs
+
+  lint:
+    name: Lint (hlint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read tool versions
+        id: versions
+        run: |
+          source tools/versions.env
+          echo "hlint=$HLINT_VERSION" >> "$GITHUB_OUTPUT"
+      - uses: haskell-actions/hlint-setup@v2
+        with:
+          version: ${{ steps.versions.outputs.hlint }}
+      - uses: haskell-actions/hlint-run@v2
+        with:
+          path: '["src/", "app/", "test/"]'
+          fail-on: warning
+
+  build-test:
+    name: Build, test, coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: haskell-actions/setup@v2
+        id: setup
+        with:
+          ghc-version: "9.10.3"
+          stack-version: "3.7.1"
+          enable-stack: true
+          stack-no-global: true
+
+      - name: Cache Stack artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.stack
+            .stack-work
+          key: ${{ runner.os }}-stack-${{ hashFiles('stack.yaml.lock', 'package.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-stack-
+
+      - name: Build (pedantic, with coverage)
+        run: stack build --pedantic --test --no-run-tests --coverage
+
+      - name: Test (pedantic, with coverage)
+        run: stack test --pedantic --coverage
+
+      - name: Install hpc-codecov
+        run: stack install hpc-codecov
+
+      - name: Generate Codecov report from HPC
+        run: |
+          "$HOME/.local/bin/hpc-codecov" -o codecov.json stack:wg-forge-test
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./codecov.json
+          fail_ci_if_error: false
