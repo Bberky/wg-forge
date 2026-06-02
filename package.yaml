@@ -1,7 +1,7 @@
 name: wg-forge
 version: 0.1.0.0
 github: "Bberky/wg-forge"
-license: BSD-3-Clause
+license: MIT
 author: "Adam Berkes"
 maintainer: "adam.berkes2002@gmail.com"
 copyright: "2026 Adam Berkes"
