@@ -21,6 +21,9 @@ description: Please see the README on GitHub at <https://github.com/Bberky/wg-fo
 
 dependencies:
   - base >= 4.7 && < 5
+  - iproute
+  - text
+  - containers
 
 ghc-options:
   - -Wall
