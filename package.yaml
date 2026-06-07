@@ -24,6 +24,8 @@ dependencies:
   - iproute
   - text
   - containers
+  - aeson
+  - yaml
 
 ghc-options:
   - -Wall
