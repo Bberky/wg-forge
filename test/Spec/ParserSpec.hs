@@ -8,7 +8,15 @@ import Data.IP (AddrRange, IPv4, makeAddrRange, toIPv4)
 import Data.Text (Text)
 import Test.Hspec
 
-import WgForge.Spec (AllowedIpsMode (..), Endpoint (..), HostOrIp (..), NetworkSpec (..), Port (..))
+import WgForge.Spec (
+  AllowedIpsMode (..),
+  Endpoint (..),
+  HostOrIp (..),
+  NetworkSpec (..),
+  PeerName (..),
+  Port (..),
+  SegmentSpec (..),
+ )
 import WgForge.Spec.Parser (parseCidr)
 
 ipAddr1 :: IPv4
@@ -95,5 +103,53 @@ spec =
     it "should fail to parse endpoint with negative port" $ do
       let val = String "vpn.example.com:-1"
       (fromJSON val :: Result Endpoint) `shouldSatisfy` \case
+        Error _ -> True
+        _ -> False
+    it "should parse full-mesh segment" $ do
+      let val = object ["topology" .= ("full-mesh" :: Text), "peers" .= (["alice", "bob"] :: [Text])]
+      let expected = FullMesh [PeerName "alice", PeerName "bob"]
+      fromJSON val `shouldBe` Success expected
+    it "should parse hub-and-spoke segment with allowedIps" $ do
+      let val =
+            object
+              [ "topology" .= ("hub-and-spoke" :: Text),
+                "hubs" .= (["hub1"] :: [Text]),
+                "spokes" .= (["spoke1", "spoke2"] :: [Text]),
+                "allowedIps" .= ("subnet" :: Text)
+              ]
+      let expected = HubSpoke [PeerName "hub1"] [PeerName "spoke1", PeerName "spoke2"] Subnet
+      fromJSON val `shouldBe` Success expected
+    it "should default to Peers when hub-and-spoke segment has no allowedIps" $ do
+      let val =
+            object
+              [ "topology" .= ("hub-and-spoke" :: Text),
+                "hubs" .= (["hub1"] :: [Text]),
+                "spokes" .= (["spoke1"] :: [Text])
+              ]
+      let expected = HubSpoke [PeerName "hub1"] [PeerName "spoke1"] Peers
+      fromJSON val `shouldBe` Success expected
+    it "should parse relay segment with allowedIps" $ do
+      let val =
+            object
+              [ "topology" .= ("relay" :: Text),
+                "relays" .= (["relay1"] :: [Text]),
+                "client" .= (["leaf1"] :: [Text]),
+                "allowedIps" .= ("internet" :: Text)
+              ]
+      let expected = Relay [PeerName "relay1"] [PeerName "leaf1"] Internet
+      fromJSON val `shouldBe` Success expected
+    it "should fail to parse segment with invalid topology" $ do
+      let val = object ["topology" .= ("ring" :: Text)]
+      (fromJSON val :: Result SegmentSpec) `shouldSatisfy` \case
+        Error err -> err == "Invalid topology: ring"
+        _ -> False
+    it "should fail to parse segment with missing topology" $ do
+      let val = object ["peers" .= (["alice"] :: [Text])]
+      (fromJSON val :: Result SegmentSpec) `shouldSatisfy` \case
+        Error _ -> True
+        _ -> False
+    it "should fail to parse full-mesh segment with missing peers" $ do
+      let val = object ["topology" .= ("full-mesh" :: Text)]
+      (fromJSON val :: Result SegmentSpec) `shouldSatisfy` \case
         Error _ -> True
         _ -> False
