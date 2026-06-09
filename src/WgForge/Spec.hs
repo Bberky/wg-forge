@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 module WgForge.Spec (
   Network (..),
   NetworkSpec (..),
@@ -12,10 +15,12 @@ module WgForge.Spec (
 )
 where
 
+import Data.Aeson (FromJSON)
 import Data.IP (AddrRange, IPv4)
 import Data.Map (Map)
 import Data.Text (Text)
 import Data.Word (Word16)
+import GHC.Generics (Generic)
 
 -- | Top-level parsed network document.
 data Network = Network
@@ -59,7 +64,7 @@ data HostOrIp = HostName Text | HostIp IPv4
 
 -- | UDP port number.
 newtype Port = Port Word16
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, FromJSON)
 
 -- | Unique segment identifier.
 newtype SegmentName = SegmentName Text deriving (Eq, Ord, Show)
