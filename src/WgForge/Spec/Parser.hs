@@ -1,8 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module WgForge.Spec.Parser (parseCidr) where
+module WgForge.Spec.Parser (
+  parseNetwork,
+  parseNetworkFile,
+  parseCidr,
+) where
 
+import Control.Exception (IOException, displayException, try)
 import Data.Aeson (
   FromJSON (..),
   Object,
@@ -13,11 +18,16 @@ import Data.Aeson (
   (.:?),
  )
 import Data.Aeson.Types (Parser)
+import Data.Bifunctor (first)
+import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
 import Data.IP (AddrRange, IPv4)
 import Data.Text (pack, unpack)
 import Data.Word (Word16)
+import Data.Yaml (ParseException (..), decodeEither', prettyPrintParseException)
 import Text.Read
 
+import WgForge.Error (SpecError (..))
 import WgForge.Spec
 
 instance FromJSON NetworkSpec where
@@ -88,6 +98,22 @@ instance FromJSON PeerSpec where
       <*> o .:? "persistentKeepalive"
       <*> (o .:? "address" >>= traverse (either fail pure . parseIPv4))
       <*> o .:? "tags" .!= []
+
+-- | Parse a YAML document into a 'Network'.
+parseNetwork :: ByteString -> Either SpecError Network
+parseNetwork = first fromParseException . decodeEither'
+
+-- | Read and parse a YAML spec file into a 'Network'.
+parseNetworkFile :: FilePath -> IO (Either SpecError Network)
+parseNetworkFile path = do
+  contents <- try (BS.readFile path)
+  pure $ case contents of
+    Left e -> Left $ SpecIoError (displayException (e :: IOException))
+    Right bytes -> parseNetwork bytes
+
+fromParseException :: ParseException -> SpecError
+fromParseException (AesonException msg) = SpecParseError msg
+fromParseException e = YamlSyntaxError (prettyPrintParseException e)
 
 instance FromJSON Network where
   parseJSON = withObject "Network" $ \o ->

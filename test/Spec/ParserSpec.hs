@@ -4,11 +4,14 @@
 module Spec.ParserSpec (spec) where
 
 import Data.Aeson (Result (..), Value (String), fromJSON, object, (.=))
+import qualified Data.ByteString.Char8 as BS8
 import Data.IP (AddrRange, IPv4, makeAddrRange, toIPv4)
+import Data.List (isInfixOf)
 import qualified Data.Map as Map
 import Data.Text (Text)
 import Test.Hspec
 
+import WgForge.Error (SpecError (..))
 import WgForge.Spec (
   AllowedIpsMode (..),
   Endpoint (..),
@@ -21,7 +24,7 @@ import WgForge.Spec (
   SegmentName (..),
   SegmentSpec (..),
  )
-import WgForge.Spec.Parser (parseCidr)
+import WgForge.Spec.Parser (parseCidr, parseNetwork, parseNetworkFile)
 
 ipAddr1 :: IPv4
 ipAddr1 = toIPv4 [10, 0, 0, 0]
@@ -215,4 +218,64 @@ spec =
       let val = object ["peers" .= object []]
       (fromJSON val :: Result Network) `shouldSatisfy` \case
         Error _ -> True
+        _ -> False
+    it "should parse a full YAML document" $ do
+      let yaml =
+            BS8.pack $
+              unlines
+                [ "network:",
+                  "  name: Test Network",
+                  "  cidr: 10.0.0.0/24",
+                  "peers:",
+                  "  alice:",
+                  "    address: 10.0.0.1",
+                  "  bob: {}",
+                  "segments:",
+                  "  main:",
+                  "    topology: full-mesh",
+                  "    peers: [alice, bob]"
+                ]
+      let expected =
+            Network
+              (NetworkSpec (Just "Test Network") ipRange1)
+              ( Map.fromList
+                  [ (PeerName "alice", PeerSpec Nothing Nothing Nothing (Just (toIPv4 [10, 0, 0, 1])) []),
+                    (PeerName "bob", PeerSpec Nothing Nothing Nothing Nothing [])
+                  ]
+              )
+              (Map.fromList [(SegmentName "main", FullMesh [PeerName "alice", PeerName "bob"])])
+      parseNetwork yaml `shouldBe` Right expected
+    it "should report malformed YAML as a syntax error" $ do
+      let yaml = BS8.pack "network: [unclosed"
+      parseNetwork yaml `shouldSatisfy` \case
+        Left (YamlSyntaxError _) -> True
+        _ -> False
+    it "should report schema violations as parse errors" $ do
+      let yaml = BS8.pack $ unlines ["network:", "  cidr: invalid_cidr"]
+      parseNetwork yaml `shouldSatisfy` \case
+        Left (SpecParseError msg) -> "Invalid CIDR notation" `isInfixOf` msg
+        _ -> False
+    it "should parse a YAML spec file" $ do
+      let expected =
+            Network
+              (NetworkSpec (Just "Fixture Network") ipRange1)
+              ( Map.fromList
+                  [ ( PeerName "alice",
+                      PeerSpec
+                        (Just (Endpoint (HostName "vpn.example.com") (Port 51820)))
+                        (Just (Port 51820))
+                        Nothing
+                        (Just (toIPv4 [10, 0, 0, 1]))
+                        []
+                    ),
+                    (PeerName "bob", PeerSpec Nothing Nothing (Just 25) Nothing ["laptop"])
+                  ]
+              )
+              (Map.fromList [(SegmentName "main", FullMesh [PeerName "alice", PeerName "bob"])])
+      result <- parseNetworkFile "test/fixtures/network.yaml"
+      result `shouldBe` Right expected
+    it "should report a missing spec file as an IO error" $ do
+      result <- parseNetworkFile "test/fixtures/does-not-exist.yaml"
+      result `shouldSatisfy` \case
+        Left (SpecIoError _) -> True
         _ -> False

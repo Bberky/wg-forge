@@ -1,0 +1,17 @@
+network:
+  name: Fixture Network
+  cidr: 10.0.0.0/24
+
+peers:
+  alice:
+    address: 10.0.0.1
+    endpoint: vpn.example.com:51820
+    listenPort: 51820
+  bob:
+    persistentKeepalive: 25
+    tags: [laptop]
+
+segments:
+  main:
+    topology: full-mesh
+    peers: [alice, bob]
