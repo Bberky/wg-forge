@@ -8,7 +8,7 @@ import Data.IP (AddrRange, IPv4, makeAddrRange, toIPv4)
 import Data.Text (Text)
 import Test.Hspec
 
-import WgForge.Spec (NetworkSpec (..))
+import WgForge.Spec (AllowedIpsMode (..), NetworkSpec (..))
 import WgForge.Spec.Parser (parseCidr)
 
 ipAddr1 :: IPv4
@@ -56,4 +56,16 @@ spec =
       let val = object ["name" .= ("Test Network" :: Text), "cidr" .= ("invalid_cidr" :: String)]
       (fromJSON val :: Result NetworkSpec) `shouldSatisfy` \case
         Error err -> err == "Invalid CIDR notation: invalid_cidr"
+        _ -> False
+    it "should parse valid AllowedIpsMode" $ do
+      let mode1 = "peers"
+      let mode2 = "subnet"
+      let mode3 = "internet"
+      (fromJSON mode1 :: Result AllowedIpsMode) `shouldBe` Success Peers
+      (fromJSON mode2 :: Result AllowedIpsMode) `shouldBe` Success Subnet
+      (fromJSON mode3 :: Result AllowedIpsMode) `shouldBe` Success Internet
+    it "should not parse invalid AllowedIpsMode" $ do
+      let mode = "something"
+      (fromJSON mode :: Result AllowedIpsMode) `shouldSatisfy` \case
+        Error _ -> True
         _ -> False

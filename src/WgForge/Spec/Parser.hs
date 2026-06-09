@@ -3,9 +3,10 @@
 
 module WgForge.Spec.Parser (parseCidr) where
 
-import Data.Aeson (FromJSON (..), withObject, (.:), (.:?))
+import Data.Aeson (FromJSON (..), withObject, withText, (.:), (.:?))
 import Data.IP (AddrRange, IPv4)
-import Text.Read (readMaybe)
+import Data.Text (unpack)
+import Text.Read
 
 import WgForge.Spec
 
@@ -22,3 +23,11 @@ parseCidr s =
   case readMaybe s of
     Just ip -> Right ip
     Nothing -> Left $ "Invalid CIDR notation: " ++ s
+
+instance FromJSON AllowedIpsMode where
+  parseJSON = withText "AllowedIpsMode" $ \t ->
+    case t of
+      "peers" -> pure Peers
+      "subnet" -> pure Subnet
+      "internet" -> pure Internet
+      _ -> fail $ "Invalid allowedIps: " ++ unpack t
