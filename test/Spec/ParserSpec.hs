@@ -5,6 +5,7 @@ module Spec.ParserSpec (spec) where
 
 import Data.Aeson (Result (..), Value (String), fromJSON, object, (.=))
 import Data.IP (AddrRange, IPv4, makeAddrRange, toIPv4)
+import qualified Data.Map as Map
 import Data.Text (Text)
 import Test.Hspec
 
@@ -12,9 +13,12 @@ import WgForge.Spec (
   AllowedIpsMode (..),
   Endpoint (..),
   HostOrIp (..),
+  Network (..),
   NetworkSpec (..),
   PeerName (..),
+  PeerSpec (..),
   Port (..),
+  SegmentName (..),
   SegmentSpec (..),
  )
 import WgForge.Spec.Parser (parseCidr)
@@ -151,5 +155,64 @@ spec =
     it "should fail to parse full-mesh segment with missing peers" $ do
       let val = object ["topology" .= ("full-mesh" :: Text)]
       (fromJSON val :: Result SegmentSpec) `shouldSatisfy` \case
+        Error _ -> True
+        _ -> False
+    it "should parse full PeerSpec" $ do
+      let val =
+            object
+              [ "endpoint" .= ("vpn.example.com:51820" :: Text),
+                "listenPort" .= (51820 :: Int),
+                "persistentKeepalive" .= (25 :: Int),
+                "address" .= ("10.0.0.5" :: Text),
+                "tags" .= (["server", "eu"] :: [Text])
+              ]
+      let expected =
+            PeerSpec
+              (Just (Endpoint (HostName "vpn.example.com") (Port 51820)))
+              (Just (Port 51820))
+              (Just 25)
+              (Just (toIPv4 [10, 0, 0, 5]))
+              ["server", "eu"]
+      fromJSON val `shouldBe` Success expected
+    it "should parse empty PeerSpec with all defaults" $ do
+      let val = object []
+      let expected = PeerSpec Nothing Nothing Nothing Nothing []
+      fromJSON val `shouldBe` Success expected
+    it "should fail to parse PeerSpec with invalid address" $ do
+      let val = object ["address" .= ("not-an-ip" :: Text)]
+      (fromJSON val :: Result PeerSpec) `shouldSatisfy` \case
+        Error err -> err == "Invalid IPv4 address: not-an-ip"
+        _ -> False
+    it "should parse full Network document" $ do
+      let val =
+            object
+              [ "network" .= object ["name" .= ("Test Network" :: Text), "cidr" .= ipRangeStr1],
+                "peers"
+                  .= object
+                    [ "alice" .= object ["address" .= ("10.0.0.1" :: Text)],
+                      "bob" .= object []
+                    ],
+                "segments"
+                  .= object
+                    [ "main" .= object ["topology" .= ("full-mesh" :: Text), "peers" .= (["alice", "bob"] :: [Text])]
+                    ]
+              ]
+      let expected =
+            Network
+              (NetworkSpec (Just "Test Network") ipRange1)
+              ( Map.fromList
+                  [ (PeerName "alice", PeerSpec Nothing Nothing Nothing (Just (toIPv4 [10, 0, 0, 1])) []),
+                    (PeerName "bob", PeerSpec Nothing Nothing Nothing Nothing [])
+                  ]
+              )
+              (Map.fromList [(SegmentName "main", FullMesh [PeerName "alice", PeerName "bob"])])
+      fromJSON val `shouldBe` Success expected
+    it "should parse Network document with missing peers and segments" $ do
+      let val = object ["network" .= object ["cidr" .= ipRangeStr1]]
+      let expected = Network (NetworkSpec Nothing ipRange1) Map.empty Map.empty
+      fromJSON val `shouldBe` Success expected
+    it "should fail to parse Network document without network section" $ do
+      let val = object ["peers" .= object []]
+      (fromJSON val :: Result Network) `shouldSatisfy` \case
         Error _ -> True
         _ -> False

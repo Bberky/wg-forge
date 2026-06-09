@@ -63,3 +63,4 @@ tests:
     dependencies:
       - wg-forge
       - hspec
+      - containers
