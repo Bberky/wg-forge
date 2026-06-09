@@ -21,6 +21,12 @@ description: Please see the README on GitHub at <https://github.com/Bberky/wg-fo
 
 dependencies:
   - base >= 4.7 && < 5
+  - iproute
+  - text
+  - containers
+  - aeson
+  - yaml
+  - bytestring
 
 ghc-options:
   - -Wall
@@ -57,3 +63,5 @@ tests:
       - -with-rtsopts=-N
     dependencies:
       - wg-forge
+      - hspec
+      - containers

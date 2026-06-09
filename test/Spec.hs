@@ -1,2 +1,7 @@
+import Test.Hspec
+
+import qualified Spec.ParserSpec as ParserSpec
+
 main :: IO ()
-main = putStrLn "Test suite not yet implemented"
+main = hspec $ do
+  ParserSpec.spec
