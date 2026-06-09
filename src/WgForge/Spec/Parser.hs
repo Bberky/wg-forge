@@ -3,7 +3,16 @@
 
 module WgForge.Spec.Parser (parseCidr) where
 
-import Data.Aeson (FromJSON (..), withObject, withText, (.:), (.:?))
+import Data.Aeson (
+  FromJSON (..),
+  Object,
+  withObject,
+  withText,
+  (.!=),
+  (.:),
+  (.:?),
+ )
+import Data.Aeson.Types (Parser)
 import Data.IP (AddrRange, IPv4)
 import Data.Text (pack, unpack)
 import Data.Word (Word16)
@@ -58,3 +67,15 @@ instance FromJSON Endpoint where
         p <- either fail pure (parsePort portStr)
         pure $ Endpoint (parseHost hostStr) (Port p)
       _ -> fail $ "Invalid endpoint: " ++ unpack t
+
+instance FromJSON SegmentSpec where
+  parseJSON = withObject "SegmentSpec" $ \o -> do
+    topology <- o .: "topology" :: Parser String
+    case topology of
+      "full-mesh" -> FullMesh <$> o .: "peers"
+      "hub-and-spoke" -> HubSpoke <$> o .: "hubs" <*> o .: "spokes" <*> allowedIpsOrDefault o
+      "relay" -> Relay <$> o .: "relays" <*> o .: "client" <*> allowedIpsOrDefault o
+      _ -> fail $ "Invalid topology: " ++ topology
+   where
+    allowedIpsOrDefault :: Object -> Parser AllowedIpsMode
+    allowedIpsOrDefault o = o .:? "allowedIps" .!= Peers

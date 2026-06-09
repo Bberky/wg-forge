@@ -39,7 +39,7 @@ data NetworkSpec = NetworkSpec
   deriving (Eq, Show)
 
 -- | Unique peer identifier.
-newtype PeerName = PeerName Text deriving (Eq, Ord, Show)
+newtype PeerName = PeerName Text deriving (Eq, Ord, Show, Generic, FromJSON)
 
 -- | Per-peer configuration declared in the spec.
 data PeerSpec = PeerSpec
