@@ -79,3 +79,19 @@ instance FromJSON SegmentSpec where
    where
     allowedIpsOrDefault :: Object -> Parser AllowedIpsMode
     allowedIpsOrDefault o = o .:? "allowedIps" .!= Peers
+
+instance FromJSON PeerSpec where
+  parseJSON = withObject "PeerSpec" $ \o ->
+    PeerSpec
+      <$> o .:? "endpoint"
+      <*> o .:? "listenPort"
+      <*> o .:? "persistentKeepalive"
+      <*> (o .:? "address" >>= traverse (either fail pure . parseIPv4))
+      <*> o .:? "tags" .!= []
+
+instance FromJSON Network where
+  parseJSON = withObject "Network" $ \o ->
+    Network
+      <$> o .: "network"
+      <*> o .:? "peers" .!= mempty
+      <*> o .:? "segments" .!= mempty

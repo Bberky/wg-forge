@@ -1,5 +1,6 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module WgForge.Spec (
   Network (..),
@@ -15,7 +16,7 @@ module WgForge.Spec (
 )
 where
 
-import Data.Aeson (FromJSON)
+import Data.Aeson (FromJSON, FromJSONKey)
 import Data.IP (AddrRange, IPv4)
 import Data.Map (Map)
 import Data.Text (Text)
@@ -39,7 +40,9 @@ data NetworkSpec = NetworkSpec
   deriving (Eq, Show)
 
 -- | Unique peer identifier.
-newtype PeerName = PeerName Text deriving (Eq, Ord, Show, Generic, FromJSON)
+newtype PeerName = PeerName Text
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving newtype (FromJSON, FromJSONKey)
 
 -- | Per-peer configuration declared in the spec.
 data PeerSpec = PeerSpec
@@ -64,10 +67,13 @@ data HostOrIp = HostName Text | HostIp IPv4
 
 -- | UDP port number.
 newtype Port = Port Word16
-  deriving (Eq, Ord, Show, Generic, FromJSON)
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving newtype (FromJSON)
 
 -- | Unique segment identifier.
-newtype SegmentName = SegmentName Text deriving (Eq, Ord, Show)
+newtype SegmentName = SegmentName Text
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving newtype (FromJSON, FromJSONKey)
 
 -- | Topology of a network segment.
 data SegmentSpec
