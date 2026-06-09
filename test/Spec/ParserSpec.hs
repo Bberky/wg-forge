@@ -3,12 +3,12 @@
 
 module Spec.ParserSpec (spec) where
 
-import Data.Aeson (Result (..), fromJSON, object, (.=))
+import Data.Aeson (Result (..), Value (String), fromJSON, object, (.=))
 import Data.IP (AddrRange, IPv4, makeAddrRange, toIPv4)
 import Data.Text (Text)
 import Test.Hspec
 
-import WgForge.Spec (AllowedIpsMode (..), NetworkSpec (..))
+import WgForge.Spec (AllowedIpsMode (..), Endpoint (..), HostOrIp (..), NetworkSpec (..), Port (..))
 import WgForge.Spec.Parser (parseCidr)
 
 ipAddr1 :: IPv4
@@ -67,5 +67,33 @@ spec =
     it "should not parse invalid AllowedIpsMode" $ do
       let mode = "something"
       (fromJSON mode :: Result AllowedIpsMode) `shouldSatisfy` \case
+        Error _ -> True
+        _ -> False
+    it "should parse endpoint with IPv4 host" $ do
+      let val = String "10.0.0.1:51820"
+      let expected = Endpoint (HostIp (toIPv4 [10, 0, 0, 1])) (Port 51820)
+      fromJSON val `shouldBe` Success expected
+    it "should parse endpoint with hostname" $ do
+      let val = String "vpn.example.com:51820"
+      let expected = Endpoint (HostName "vpn.example.com") (Port 51820)
+      fromJSON val `shouldBe` Success expected
+    it "should fail to parse endpoint without a port" $ do
+      let val = String "vpn.example.com"
+      (fromJSON val :: Result Endpoint) `shouldSatisfy` \case
+        Error _ -> True
+        _ -> False
+    it "should fail to parse endpoint with non-numeric port" $ do
+      let val = String "vpn.example.com:notaport"
+      (fromJSON val :: Result Endpoint) `shouldSatisfy` \case
+        Error _ -> True
+        _ -> False
+    it "should fail to parse endpoint with out-of-range port" $ do
+      let val = String "vpn.example.com:99999"
+      (fromJSON val :: Result Endpoint) `shouldSatisfy` \case
+        Error _ -> True
+        _ -> False
+    it "should fail to parse endpoint with negative port" $ do
+      let val = String "vpn.example.com:-1"
+      (fromJSON val :: Result Endpoint) `shouldSatisfy` \case
         Error _ -> True
         _ -> False
