@@ -21,4 +21,7 @@ data ValidationError
     MissingEndpoint PeerName
   | -- | A tunnel (A, B) exists in a segment but neither peer has an endpoint.
     NatPairInMesh SegmentName PeerName PeerName
+  | -- | A peer is declared in 'specPeers' but referenced by no segment,
+    --   so the compiled output would contain no tunnels for it.
+    IslandPeer PeerName
   deriving (Eq, Show)

@@ -4,6 +4,7 @@ module WgForge.Spec.Validator (
   validatePeerRoles,
   validateEndpoints,
   validateNatPairs,
+  validateReachability,
 ) where
 
 import Data.Foldable (traverse_)
@@ -15,7 +16,7 @@ import qualified Data.Set as Set
 import Validation (Validation (Failure), failureIf)
 
 import WgForge.Error (
-  ValidationError (InsufficientPeers, MissingEndpoint, NatPairInMesh, PeerBothRoles),
+  ValidationError (InsufficientPeers, IslandPeer, MissingEndpoint, NatPairInMesh, PeerBothRoles),
  )
 import WgForge.Spec (
   Network (..),
@@ -31,6 +32,7 @@ validateNetwork net@(Network _ _ segMap) =
     <$ traverse_ (uncurry validateSegmentSpec) (Map.toList segMap)
     <* validateEndpoints net
     <* validateNatPairs net
+    <* validateReachability net
 
 -- | Validate that each segment has enough peers and has no role conflicts.
 validateSegmentSpec ::
@@ -110,3 +112,17 @@ segmentEdges (HubSpoke hubs spokes _) =
 segmentEdges (Relay relays clients _) =
   [(r, c) | r <- relays, c <- clients]
     ++ [(r1, r2) | (r1 : rest) <- tails relays, r2 <- rest]
+
+-- | Validate that every peer in 'specPeers' appears in at least one segment.
+validateReachability :: Network -> Validation (NonEmpty ValidationError) Network
+validateReachability net@(Network _ peerMap segMap) =
+  net
+    <$ traverse_
+      (\p -> Failure $ IslandPeer p :| [])
+      islands
+ where
+  assigned = foldMap segmentPeers (Map.elems segMap)
+  segmentPeers (FullMesh ps) = Set.fromList ps
+  segmentPeers (HubSpoke hs ss _) = Set.fromList (hs ++ ss)
+  segmentPeers (Relay rs cs _) = Set.fromList (rs ++ cs)
+  islands = filter (`Set.notMember` assigned) (Map.keys peerMap)
