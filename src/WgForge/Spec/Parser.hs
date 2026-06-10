@@ -10,13 +10,16 @@ module WgForge.Spec.Parser (
 import Control.Exception (IOException, displayException, try)
 import Data.Aeson (
   FromJSON (..),
+  Key,
   Object,
+  Value,
   withObject,
   withText,
   (.!=),
   (.:),
   (.:?),
  )
+import Data.Aeson.KeyMap (keys)
 import Data.Aeson.Types (Parser)
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
@@ -31,7 +34,7 @@ import WgForge.Error (SpecError (..))
 import WgForge.Spec
 
 instance FromJSON NetworkSpec where
-  parseJSON = withObject "NetworkSpec" $ \v ->
+  parseJSON = withObjectStrict "NetworkSpec" ["name", "cidr"] $ \v ->
     NetworkSpec
       <$> v .:? "name"
       <*> (v .: "cidr" >>= either fail pure . parseCidr)
@@ -79,19 +82,22 @@ instance FromJSON Endpoint where
       _ -> fail $ "Invalid endpoint: " ++ unpack t
 
 instance FromJSON SegmentSpec where
-  parseJSON = withObject "SegmentSpec" $ \o -> do
-    topology <- o .: "topology" :: Parser String
-    case topology of
-      "full-mesh" -> FullMesh <$> o .: "peers"
-      "hub-and-spoke" -> HubSpoke <$> o .: "hubs" <*> o .: "spokes" <*> allowedIpsOrDefault o
-      "relay" -> Relay <$> o .: "relays" <*> o .: "client" <*> allowedIpsOrDefault o
-      _ -> fail $ "Invalid topology: " ++ topology
+  parseJSON = withObjectStrict
+    "SegmentSpec"
+    ["topology", "peers", "hubs", "spokes", "relays", "client", "allowedIps"]
+    $ \o -> do
+      topology <- o .: "topology" :: Parser String
+      case topology of
+        "full-mesh" -> FullMesh <$> o .: "peers"
+        "hub-and-spoke" -> HubSpoke <$> o .: "hubs" <*> o .: "spokes" <*> allowedIpsOrDefault o
+        "relay" -> Relay <$> o .: "relays" <*> o .: "client" <*> allowedIpsOrDefault o
+        _ -> fail $ "Invalid topology: " ++ topology
    where
     allowedIpsOrDefault :: Object -> Parser AllowedIpsMode
     allowedIpsOrDefault o = o .:? "allowedIps" .!= Peers
 
 instance FromJSON PeerSpec where
-  parseJSON = withObject "PeerSpec" $ \o ->
+  parseJSON = withObjectStrict "PeerSpec" ["endpoint", "listenPort", "persistentKeepalive", "address", "tags"] $ \o ->
     PeerSpec
       <$> o .:? "endpoint"
       <*> o .:? "listenPort"
@@ -116,8 +122,15 @@ fromParseException (AesonException msg) = SpecParseError msg
 fromParseException e = YamlSyntaxError (prettyPrintParseException e)
 
 instance FromJSON Network where
-  parseJSON = withObject "Network" $ \o ->
+  parseJSON = withObjectStrict "Network" ["network", "peers", "segments"] $ \o ->
     Network
       <$> o .: "network"
       <*> o .:? "peers" .!= mempty
       <*> o .:? "segments" .!= mempty
+
+-- | A helper function to parse an object while ensuring that no unknown fields are present.
+withObjectStrict :: String -> [Key] -> (Object -> Parser a) -> Value -> Parser a
+withObjectStrict typeName allowed f = withObject typeName $ \o ->
+  case filter (`notElem` allowed) (keys o) of
+    [] -> f o
+    extra -> fail $ "Unknown field(s) in " ++ typeName ++ ": " ++ show extra

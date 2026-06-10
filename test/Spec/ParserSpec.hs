@@ -255,6 +255,59 @@ spec =
       parseNetwork yaml `shouldSatisfy` \case
         Left (SpecParseError msg) -> "Invalid CIDR notation" `isInfixOf` msg
         _ -> False
+    it "should reject an unknown key in network section" $ do
+      let yaml =
+            BS8.pack $
+              unlines
+                [ "network:",
+                  "  cidr: 10.0.0.0/24",
+                  "  typo: oops"
+                ]
+      parseNetwork yaml `shouldSatisfy` \case
+        Left (SpecParseError msg) -> "Unknown field" `isInfixOf` msg
+        _ -> False
+    it "should reject an unknown key in peer section" $ do
+      let yaml =
+            BS8.pack $
+              unlines
+                [ "network:",
+                  "  cidr: 10.0.0.0/24",
+                  "peers:",
+                  "  alice:",
+                  "    unknownField: foo"
+                ]
+      parseNetwork yaml `shouldSatisfy` \case
+        Left (SpecParseError msg) -> "Unknown field" `isInfixOf` msg
+        _ -> False
+    it "should reject an unknown key in segment section" $ do
+      let yaml =
+            BS8.pack $
+              unlines
+                [ "network:",
+                  "  cidr: 10.0.0.0/24",
+                  "peers:",
+                  "  alice: {}",
+                  "  bob: {}",
+                  "segments:",
+                  "  main:",
+                  "    topology: full-mesh",
+                  "    peers: [alice, bob]",
+                  "    extra: forbidden"
+                ]
+      parseNetwork yaml `shouldSatisfy` \case
+        Left (SpecParseError msg) -> "Unknown field" `isInfixOf` msg
+        _ -> False
+    it "should reject an unknown key at the top level" $ do
+      let yaml =
+            BS8.pack $
+              unlines
+                [ "network:",
+                  "  cidr: 10.0.0.0/24",
+                  "bogus: value"
+                ]
+      parseNetwork yaml `shouldSatisfy` \case
+        Left (SpecParseError msg) -> "Unknown field" `isInfixOf` msg
+        _ -> False
     it "should parse a YAML spec file" $ do
       let expected =
             Network
