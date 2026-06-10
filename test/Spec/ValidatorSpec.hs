@@ -2,22 +2,40 @@
 
 module Spec.ValidatorSpec (spec) where
 
+import Data.IP (AddrRange, IPv4)
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
+import qualified Data.Map.Strict as Map
 import Test.Hspec
 import Validation (Validation (..))
 
 import WgForge.Error (ValidationError (..))
 import WgForge.Spec (
   AllowedIpsMode (..),
+  Endpoint (..),
+  HostOrIp (..),
+  Network (..),
+  NetworkSpec (..),
   PeerName (..),
+  PeerSpec (..),
+  Port (..),
   SegmentName (..),
   SegmentSpec (..),
  )
-import WgForge.Spec.Validator (validatePeerRoles, validateSegmentSpec)
+import WgForge.Spec.Validator (
+  validateEndpoints,
+  validateNatPairs,
+  validateNetwork,
+  validatePeerRoles,
+  validateSegmentSpec,
+ )
 
-sn :: SegmentName
+-- ---------------------------------------------------------------------------
+-- Fixtures
+
+sn, sn2 :: SegmentName
 sn = SegmentName "seg"
+sn2 = SegmentName "seg2"
 
 alice, bob, carol, dave :: PeerName
 alice = PeerName "alice"
@@ -25,9 +43,36 @@ bob = PeerName "bob"
 carol = PeerName "carol"
 dave = PeerName "dave"
 
+sampleEndpoint :: Endpoint
+sampleEndpoint = Endpoint (HostName "vpn.example.com") (Port 51820)
+
+-- | Peer with an optional endpoint; all other fields are defaults.
+mkPeer :: Maybe Endpoint -> PeerSpec
+mkPeer ep = PeerSpec ep Nothing Nothing Nothing []
+
+sampleCidr :: AddrRange IPv4
+sampleCidr = read "10.0.0.0/24"
+
+sampleNetSpec :: NetworkSpec
+sampleNetSpec = NetworkSpec Nothing sampleCidr
+
+-- | Build a Network from peer and segment lists.
+mkNetwork ::
+  [(PeerName, PeerSpec)] ->
+  [(SegmentName, SegmentSpec)] ->
+  Network
+mkNetwork ps segs =
+  Network sampleNetSpec (Map.fromList ps) (Map.fromList segs)
+
+-- ---------------------------------------------------------------------------
+-- Helpers
+
 failureErrors :: Validation (NonEmpty e) a -> [e]
 failureErrors (Failure es) = NE.toList es
 failureErrors (Success _) = []
+
+-- ---------------------------------------------------------------------------
+-- Specs
 
 spec :: Spec
 spec = do
@@ -119,3 +164,111 @@ spec = do
         let result = validatePeerRoles sn (Relay [alice, bob] [alice, bob] Peers)
         failureErrors result
           `shouldMatchList` [PeerBothRoles sn alice, PeerBothRoles sn bob]
+
+  describe "validateEndpoints" $ do
+    it "reports MissingEndpoint for hub without endpoint" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
+              [(sn, HubSpoke [alice] [bob] Peers)]
+      failureErrors (validateEndpoints net) `shouldMatchList` [MissingEndpoint alice]
+
+    it "reports MissingEndpoint for relay without endpoint" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
+              [(sn, Relay [alice] [bob] Peers)]
+      failureErrors (validateEndpoints net) `shouldMatchList` [MissingEndpoint alice]
+
+    it "succeeds when hub has an endpoint" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
+              [(sn, HubSpoke [alice] [bob] Peers)]
+      validateEndpoints net `shouldBe` Success net
+
+    it "accumulates errors for multiple hubs missing endpoints" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
+              [(sn, HubSpoke [alice, bob] [carol] Peers)]
+      failureErrors (validateEndpoints net)
+        `shouldMatchList` [MissingEndpoint alice, MissingEndpoint bob]
+
+    it "deduplicates: same hub missing endpoint in two segments reports once" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
+              [ (sn, HubSpoke [alice] [bob] Peers),
+                (sn2, HubSpoke [alice] [carol] Peers)
+              ]
+      failureErrors (validateEndpoints net) `shouldMatchList` [MissingEndpoint alice]
+
+  describe "validateNatPairs" $ do
+    it "reports NatPairInMesh when both peers in a FullMesh lack endpoint" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
+              [(sn, FullMesh [alice, bob])]
+      failureErrors (validateNatPairs net)
+        `shouldMatchList` [NatPairInMesh sn alice bob]
+
+    it "succeeds when one peer in a FullMesh pair has an endpoint" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
+              [(sn, FullMesh [alice, bob])]
+      validateNatPairs net `shouldBe` Success net
+
+    it "reports all three pairs when three FullMesh peers all lack endpoints" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
+              [(sn, FullMesh [alice, bob, carol])]
+      failureErrors (validateNatPairs net)
+        `shouldMatchList` [ NatPairInMesh sn alice bob,
+                            NatPairInMesh sn alice carol,
+                            NatPairInMesh sn bob carol
+                          ]
+
+    it "succeeds for HubSpoke when hub has an endpoint (spoke may lack one)" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
+              [(sn, HubSpoke [alice] [bob] Peers)]
+      validateNatPairs net `shouldBe` Success net
+
+    it "succeeds for two hubs both with endpoints (hub-hub edge is covered)" $ do
+      let net =
+            mkNetwork
+              [ (alice, mkPeer (Just sampleEndpoint)),
+                (bob, mkPeer (Just sampleEndpoint)),
+                (carol, mkPeer Nothing)
+              ]
+              [(sn, HubSpoke [alice, bob] [carol] Peers)]
+      validateNatPairs net `shouldBe` Success net
+
+    it "reports two errors for the same bad pair appearing in two segments" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
+              [ (sn, FullMesh [alice, bob]),
+                (sn2, FullMesh [alice, bob])
+              ]
+      failureErrors (validateNatPairs net)
+        `shouldMatchList` [NatPairInMesh sn alice bob, NatPairInMesh sn2 alice bob]
+
+  describe "validateNetwork" $ do
+    it "accumulates structural and endpoint errors from a single pass" $ do
+      -- FullMesh with 1 peer (InsufficientPeers) and both peers lack endpoints
+      -- (NatPairInMesh only fires when there are >= 2 peers; use a 2-peer mesh
+      --  with an additional InsufficientPeers from a second segment)
+      let net =
+            mkNetwork
+              [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
+              [ (sn, FullMesh [alice, bob]), -- NatPairInMesh
+                (sn2, FullMesh [alice]) -- InsufficientPeers
+              ]
+      let errs = failureErrors (validateNetwork net)
+      errs `shouldContain` [NatPairInMesh sn alice bob]
+      errs `shouldContain` [InsufficientPeers sn2 "requires at least 2 peers"]
