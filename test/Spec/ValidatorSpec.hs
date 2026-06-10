@@ -27,6 +27,7 @@ import WgForge.Spec.Validator (
   validateNatPairs,
   validateNetwork,
   validatePeerRoles,
+  validateReachability,
   validateSegmentSpec,
  )
 
@@ -258,6 +259,81 @@ spec = do
       failureErrors (validateNatPairs net)
         `shouldMatchList` [NatPairInMesh sn alice bob, NatPairInMesh sn2 alice bob]
 
+  describe "validateReachability" $ do
+    -- Success: each role position counts as reachable
+    it "succeeds for a FullMesh member" $ do
+      let net = mkNetwork [(alice, mkPeer Nothing), (bob, mkPeer Nothing)] [(sn, FullMesh [alice, bob])]
+      validateReachability net `shouldBe` Success net
+
+    it "succeeds for a HubSpoke hub" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
+              [(sn, HubSpoke [alice] [bob] Peers)]
+      validateReachability net `shouldBe` Success net
+
+    it "succeeds for a HubSpoke spoke" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
+              [(sn, HubSpoke [alice] [bob] Peers)]
+      validateReachability net `shouldBe` Success net
+
+    it "succeeds for a Relay relay" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
+              [(sn, Relay [alice] [bob] Peers)]
+      validateReachability net `shouldBe` Success net
+
+    it "succeeds for a Relay client" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
+              [(sn, Relay [alice] [bob] Peers)]
+      validateReachability net `shouldBe` Success net
+
+    it "succeeds when a peer is referenced in multiple segments" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
+              [(sn, HubSpoke [alice] [bob] Peers), (sn2, HubSpoke [alice] [carol] Peers)]
+      validateReachability net `shouldBe` Success net
+
+    -- Failure: IslandPeer emitted correctly
+    it "reports IslandPeer for a peer in no segment" $ do
+      let net = mkNetwork [(alice, mkPeer Nothing)] []
+      failureErrors (validateReachability net) `shouldMatchList` [IslandPeer alice]
+
+    it "reports IslandPeer only for the unreferenced peer" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
+              [(sn, FullMesh [alice, bob])]
+      failureErrors (validateReachability net) `shouldMatchList` [IslandPeer carol]
+
+    it "accumulates IslandPeer for all peers when no segments exist" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
+              []
+      failureErrors (validateReachability net)
+        `shouldMatchList` [IslandPeer alice, IslandPeer bob, IslandPeer carol]
+
+    -- Regression: no endpoint exemption
+    it "reports IslandPeer even when the peer has an endpoint" $ do
+      let net = mkNetwork [(alice, mkPeer (Just sampleEndpoint))] []
+      failureErrors (validateReachability net) `shouldMatchList` [IslandPeer alice]
+
+    -- Regression: segment-only names (future UnknownPeerRef) are not flagged
+    it "does not report IslandPeer for a name that appears only in a segment but not in specPeers" $ do
+      -- dave is referenced in the segment but not in specPeers; alice is in specPeers and the segment
+      let net =
+            mkNetwork
+              [(alice, mkPeer Nothing)]
+              [(sn, FullMesh [alice, dave])]
+      validateReachability net `shouldBe` Success net
+
   describe "validateNetwork" $ do
     it "accumulates structural and endpoint errors from a single pass" $ do
       -- FullMesh with 1 peer (InsufficientPeers) and both peers lack endpoints
@@ -271,4 +347,16 @@ spec = do
               ]
       let errs = failureErrors (validateNetwork net)
       errs `shouldContain` [NatPairInMesh sn alice bob]
+      errs `shouldContain` [InsufficientPeers sn2 "requires at least 2 peers"]
+
+    it "accumulates IslandPeer alongside InsufficientPeers in a single pass" $ do
+      -- carol is in specPeers but no segment; sn2 is a malformed FullMesh with 1 peer
+      let net =
+            mkNetwork
+              [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
+              [ (sn, FullMesh [alice, bob]), -- valid segment
+                (sn2, FullMesh [alice]) -- InsufficientPeers
+              ]
+      let errs = failureErrors (validateNetwork net)
+      errs `shouldContain` [IslandPeer carol]
       errs `shouldContain` [InsufficientPeers sn2 "requires at least 2 peers"]
