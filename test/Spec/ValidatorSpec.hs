@@ -23,11 +23,16 @@ import WgForge.Spec (
   SegmentSpec (..),
  )
 import WgForge.Spec.Validator (
+  validateAddressCollisions,
+  validateAddressesInCidr,
+  validateAddressing,
+  validateCidrCapacity,
   validateEndpoints,
   validateNatPairs,
   validateNetwork,
   validatePeerRoles,
   validateReachability,
+  validateReservedAddresses,
   validateSegmentSpec,
  )
 
@@ -51,6 +56,10 @@ sampleEndpoint = Endpoint (HostName "vpn.example.com") (Port 51820)
 mkPeer :: Maybe Endpoint -> PeerSpec
 mkPeer ep = PeerSpec ep Nothing Nothing Nothing []
 
+-- | Peer with an optional explicit address; all other fields are defaults.
+mkPeerAddr :: Maybe IPv4 -> PeerSpec
+mkPeerAddr addr = PeerSpec Nothing Nothing Nothing addr []
+
 sampleCidr :: AddrRange IPv4
 sampleCidr = read "10.0.0.0/24"
 
@@ -64,6 +73,11 @@ mkNetwork ::
   Network
 mkNetwork ps segs =
   Network sampleNetSpec (Map.fromList ps) (Map.fromList segs)
+
+-- | Build a segmentless Network with the given CIDR and peers.
+mkAddrNetwork :: AddrRange IPv4 -> [(PeerName, PeerSpec)] -> Network
+mkAddrNetwork netCidr ps =
+  Network (NetworkSpec Nothing netCidr) (Map.fromList ps) Map.empty
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -334,7 +348,190 @@ spec = do
               [(sn, FullMesh [alice, dave])]
       validateReachability net `shouldBe` Success net
 
+  describe "validateAddressesInCidr" $ do
+    it "accepts an explicit address inside the CIDR" $ do
+      let net = mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "10.0.0.5")))]
+      validateAddressesInCidr net `shouldBe` Success net
+
+    it "reports AddressOutOfCidr for an address outside the CIDR" $ do
+      let net = mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "192.168.1.5")))]
+      failureErrors (validateAddressesInCidr net)
+        `shouldMatchList` [AddressOutOfCidr alice (read "192.168.1.5")]
+
+    it "ignores peers without an explicit address" $ do
+      let net = mkAddrNetwork sampleCidr [(alice, mkPeerAddr Nothing)]
+      validateAddressesInCidr net `shouldBe` Success net
+
+    it "accumulates errors for multiple out-of-cidr addresses" $ do
+      let net =
+            mkAddrNetwork
+              sampleCidr
+              [ (alice, mkPeerAddr (Just (read "192.168.1.5"))),
+                (bob, mkPeerAddr (Just (read "10.1.0.1")))
+              ]
+      failureErrors (validateAddressesInCidr net)
+        `shouldMatchList` [ AddressOutOfCidr alice (read "192.168.1.5"),
+                            AddressOutOfCidr bob (read "10.1.0.1")
+                          ]
+
+  describe "validateReservedAddresses" $ do
+    it "reports AddressIsReserved for the network address" $ do
+      let net = mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "10.0.0.0")))]
+      failureErrors (validateReservedAddresses net)
+        `shouldMatchList` [AddressIsReserved alice (read "10.0.0.0")]
+
+    it "reports AddressIsReserved for the broadcast address" $ do
+      let net = mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "10.0.0.255")))]
+      failureErrors (validateReservedAddresses net)
+        `shouldMatchList` [AddressIsReserved alice (read "10.0.0.255")]
+
+    it "accepts an ordinary host address" $ do
+      let net = mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "10.0.0.1")))]
+      validateReservedAddresses net `shouldBe` Success net
+
+    it "accepts both addresses of a /31 (no reservations)" $ do
+      let net =
+            mkAddrNetwork
+              (read "10.0.0.0/31")
+              [ (alice, mkPeerAddr (Just (read "10.0.0.0"))),
+                (bob, mkPeerAddr (Just (read "10.0.0.1")))
+              ]
+      validateReservedAddresses net `shouldBe` Success net
+
+    it "accepts the single address of a /32 (no reservations)" $ do
+      let net = mkAddrNetwork (read "10.0.0.7/32") [(alice, mkPeerAddr (Just (read "10.0.0.7")))]
+      validateReservedAddresses net `shouldBe` Success net
+
+  describe "validateAddressCollisions" $ do
+    it "accepts distinct explicit addresses" $ do
+      let net =
+            mkAddrNetwork
+              sampleCidr
+              [ (alice, mkPeerAddr (Just (read "10.0.0.1"))),
+                (bob, mkPeerAddr (Just (read "10.0.0.2")))
+              ]
+      validateAddressCollisions net `shouldBe` Success net
+
+    it "ignores peers without an explicit address" $ do
+      let net =
+            mkAddrNetwork
+              sampleCidr
+              [(alice, mkPeerAddr Nothing), (bob, mkPeerAddr Nothing)]
+      validateAddressCollisions net `shouldBe` Success net
+
+    it "reports AddressCollision for two peers sharing an address" $ do
+      let net =
+            mkAddrNetwork
+              sampleCidr
+              [ (alice, mkPeerAddr (Just (read "10.0.0.1"))),
+                (bob, mkPeerAddr (Just (read "10.0.0.1")))
+              ]
+      failureErrors (validateAddressCollisions net)
+        `shouldMatchList` [AddressCollision alice bob (read "10.0.0.1")]
+
+    it "reports all pairs for three peers sharing an address" $ do
+      let net =
+            mkAddrNetwork
+              sampleCidr
+              [ (alice, mkPeerAddr (Just (read "10.0.0.1"))),
+                (bob, mkPeerAddr (Just (read "10.0.0.1"))),
+                (carol, mkPeerAddr (Just (read "10.0.0.1")))
+              ]
+      failureErrors (validateAddressCollisions net)
+        `shouldMatchList` [ AddressCollision alice bob (read "10.0.0.1"),
+                            AddressCollision alice carol (read "10.0.0.1"),
+                            AddressCollision bob carol (read "10.0.0.1")
+                          ]
+
+    it "reports collisions on two different addresses independently" $ do
+      let net =
+            mkAddrNetwork
+              sampleCidr
+              [ (alice, mkPeerAddr (Just (read "10.0.0.1"))),
+                (bob, mkPeerAddr (Just (read "10.0.0.1"))),
+                (carol, mkPeerAddr (Just (read "10.0.0.2"))),
+                (dave, mkPeerAddr (Just (read "10.0.0.2")))
+              ]
+      failureErrors (validateAddressCollisions net)
+        `shouldMatchList` [ AddressCollision alice bob (read "10.0.0.1"),
+                            AddressCollision carol dave (read "10.0.0.2")
+                          ]
+
+  describe "validateCidrCapacity" $ do
+    it "reports CidrOverflow when peers exceed addressable hosts" $ do
+      let net =
+            mkAddrNetwork
+              (read "10.0.0.0/30") -- 2 usable hosts
+              [ (alice, mkPeerAddr Nothing),
+                (bob, mkPeerAddr Nothing),
+                (carol, mkPeerAddr Nothing)
+              ]
+      validateCidrCapacity net `shouldBe` Failure (CidrOverflow 3 2 :| [])
+
+    it "accepts peer count equal to addressable hosts" $ do
+      let net =
+            mkAddrNetwork
+              (read "10.0.0.0/30")
+              [(alice, mkPeerAddr Nothing), (bob, mkPeerAddr Nothing)]
+      validateCidrCapacity net `shouldBe` Success net
+
+    it "counts both addresses of a /31 as usable" $ do
+      let net =
+            mkAddrNetwork
+              (read "10.0.0.0/31")
+              [(alice, mkPeerAddr Nothing), (bob, mkPeerAddr Nothing)]
+      validateCidrCapacity net `shouldBe` Success net
+
+    it "counts the single address of a /32 as usable" $ do
+      let net = mkAddrNetwork (read "10.0.0.7/32") [(alice, mkPeerAddr Nothing)]
+      validateCidrCapacity net `shouldBe` Success net
+
+    it "reports CidrOverflow for two peers in a /32" $ do
+      let net =
+            mkAddrNetwork
+              (read "10.0.0.7/32")
+              [(alice, mkPeerAddr Nothing), (bob, mkPeerAddr Nothing)]
+      validateCidrCapacity net `shouldBe` Failure (CidrOverflow 2 1 :| [])
+
+  describe "validateAddressing" $ do
+    it "accepts a network with valid distinct addresses" $ do
+      let net =
+            mkAddrNetwork
+              sampleCidr
+              [ (alice, mkPeerAddr (Just (read "10.0.0.1"))),
+                (bob, mkPeerAddr Nothing)
+              ]
+      validateAddressing net `shouldBe` Success net
+
+    it "accumulates out-of-cidr, collision and overflow errors in one pass" $ do
+      let net =
+            mkAddrNetwork
+              (read "10.0.0.0/30") -- 2 usable hosts
+              [ (alice, mkPeerAddr (Just (read "192.168.0.1"))),
+                (bob, mkPeerAddr (Just (read "10.0.0.1"))),
+                (carol, mkPeerAddr (Just (read "10.0.0.1")))
+              ]
+      failureErrors (validateAddressing net)
+        `shouldMatchList` [ AddressOutOfCidr alice (read "192.168.0.1"),
+                            AddressCollision bob carol (read "10.0.0.1"),
+                            CidrOverflow 3 2
+                          ]
+
   describe "validateNetwork" $ do
+    it "accumulates addressing errors alongside structural errors" $ do
+      let net =
+            Network
+              sampleNetSpec
+              ( Map.fromList
+                  [ (alice, mkPeerAddr (Just (read "192.168.1.5"))),
+                    (bob, mkPeerAddr Nothing)
+                  ]
+              )
+              (Map.fromList [(sn, FullMesh [alice, bob]), (sn2, FullMesh [alice])])
+      let errs = failureErrors (validateNetwork net)
+      errs `shouldContain` [AddressOutOfCidr alice (read "192.168.1.5")]
+      errs `shouldContain` [InsufficientPeers sn2 "requires at least 2 peers"]
+
     it "accumulates structural and endpoint errors from a single pass" $ do
       -- FullMesh with 1 peer (InsufficientPeers) and both peers lack endpoints
       -- (NatPairInMesh only fires when there are >= 2 peers; use a 2-peer mesh

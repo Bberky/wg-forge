@@ -5,21 +5,40 @@ module WgForge.Spec.Validator (
   validateEndpoints,
   validateNatPairs,
   validateReachability,
+  validateAddressing,
+  validateAddressesInCidr,
+  validateReservedAddresses,
+  validateAddressCollisions,
+  validateCidrCapacity,
 ) where
 
+import Data.Bits (complement, shiftL, (.&.), (.|.))
 import Data.Foldable (traverse_)
+import Data.IP (AddrRange, IPv4, addrRangePair, fromIPv4w, isMatchedTo, mlen, toIPv4w)
 import Data.List (intersect, tails)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
+import Data.Word (Word32)
 import Validation (Validation (Failure), failureIf)
 
 import WgForge.Error (
-  ValidationError (InsufficientPeers, IslandPeer, MissingEndpoint, NatPairInMesh, PeerBothRoles),
+  ValidationError (
+    AddressCollision,
+    AddressIsReserved,
+    AddressOutOfCidr,
+    CidrOverflow,
+    InsufficientPeers,
+    IslandPeer,
+    MissingEndpoint,
+    NatPairInMesh,
+    PeerBothRoles
+  ),
  )
 import WgForge.Spec (
   Network (..),
+  NetworkSpec (..),
   PeerName,
   PeerSpec (..),
   SegmentName,
@@ -33,6 +52,7 @@ validateNetwork net@(Network _ _ segMap) =
     <* validateEndpoints net
     <* validateNatPairs net
     <* validateReachability net
+    <* validateAddressing net
 
 -- | Validate that each segment has enough peers and has no role conflicts.
 validateSegmentSpec ::
@@ -126,3 +146,76 @@ validateReachability net@(Network _ peerMap segMap) =
   segmentPeers (HubSpoke hs ss _) = Set.fromList (hs ++ ss)
   segmentPeers (Relay rs cs _) = Set.fromList (rs ++ cs)
   islands = filter (`Set.notMember` assigned) (Map.keys peerMap)
+
+-- | Validate explicit peer addresses and CIDR capacity.
+validateAddressing :: Network -> Validation (NonEmpty ValidationError) Network
+validateAddressing net =
+  net
+    <$ validateAddressesInCidr net
+    <* validateReservedAddresses net
+    <* validateAddressCollisions net
+    <* validateCidrCapacity net
+
+-- | Validate that every explicit address lies inside the network CIDR.
+validateAddressesInCidr :: Network -> Validation (NonEmpty ValidationError) Network
+validateAddressesInCidr net@(Network ns peerMap _) =
+  net
+    <$ traverse_
+      (\(pn, a) -> Failure $ AddressOutOfCidr pn a :| [])
+      (filter (\(_, a) -> not (a `isMatchedTo` cidr ns)) (explicitAddresses peerMap))
+
+-- | Validate that no explicit address is the network or broadcast address.
+--   For \/31 and \/32 networks there are no reserved addresses.
+validateReservedAddresses :: Network -> Validation (NonEmpty ValidationError) Network
+validateReservedAddresses net@(Network ns peerMap _) =
+  net
+    <$ traverse_
+      (\(pn, a) -> Failure $ AddressIsReserved pn a :| [])
+      (filter (isReserved . snd) (explicitAddresses peerMap))
+ where
+  range = cidr ns
+  isReserved a =
+    mlen range <= 30 && (a == networkAddress range || a == broadcastAddress range)
+
+-- | Validate that no two peers claim the same explicit address.
+validateAddressCollisions :: Network -> Validation (NonEmpty ValidationError) Network
+validateAddressCollisions net@(Network _ peerMap _) =
+  net
+    <$ traverse_
+      (\(a, p1, p2) -> Failure $ AddressCollision p1 p2 a :| [])
+      collisions
+ where
+  claims =
+    Map.fromListWith (flip (++)) [(a, [pn]) | (pn, a) <- explicitAddresses peerMap]
+  collisions = do
+    (a, claimants) <- Map.toAscList claims
+    (p1 : rest) <- tails claimants
+    p2 <- rest
+    pure (a, p1, p2)
+
+-- | Validate that the network CIDR can accommodate all peers.
+validateCidrCapacity :: Network -> Validation (NonEmpty ValidationError) Network
+validateCidrCapacity net@(Network ns peerMap _) =
+  net <$ failureIf (peerCount > hostCount) (CidrOverflow peerCount hostCount)
+ where
+  peerCount = Map.size peerMap
+  prefixLen = mlen (cidr ns)
+  total = 1 `shiftL` (32 - prefixLen) :: Int
+  hostCount = if prefixLen >= 31 then total else total - 2
+
+explicitAddresses :: Map.Map PeerName PeerSpec -> [(PeerName, IPv4)]
+explicitAddresses peerMap =
+  [(pn, a) | (pn, ps) <- Map.toAscList peerMap, Just a <- [address ps]]
+
+networkAddress :: AddrRange IPv4 -> IPv4
+networkAddress range = toIPv4w (fromIPv4w (rangeBase range) .&. rangeMask range)
+
+broadcastAddress :: AddrRange IPv4 -> IPv4
+broadcastAddress range =
+  toIPv4w ((fromIPv4w (rangeBase range) .&. rangeMask range) .|. complement (rangeMask range))
+
+rangeBase :: AddrRange IPv4 -> IPv4
+rangeBase = fst . addrRangePair
+
+rangeMask :: AddrRange IPv4 -> Word32
+rangeMask range = complement (1 `shiftL` (32 - mlen range) - 1)
