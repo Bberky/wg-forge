@@ -17,4 +17,8 @@ data ValidationError
     InsufficientPeers SegmentName String
   | -- | Peer is assigned to both hub and spoke roles, or to both relay and client roles.
     PeerBothRoles SegmentName PeerName
+  | -- | Peer is missing an endpoint where endpoint is required (e.g. for a hub or relay).
+    MissingEndpoint PeerName
+  | -- | A tunnel (A, B) exists in a segment but neither peer has an endpoint.
+    NatPairInMesh SegmentName PeerName PeerName
   deriving (Eq, Show)
