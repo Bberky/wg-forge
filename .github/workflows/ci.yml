@@ -23,6 +23,14 @@ jobs:
         run: |
           source tools/versions.env
           echo "fourmolu=$FOURMOLU_VERSION" >> "$GITHUB_OUTPUT"
+          echo "hpack=$HPACK_VERSION" >> "$GITHUB_OUTPUT"
+      # fourmolu's import-grouping (by-scope) detects local modules from the
+      # .cabal file, which is hpack-generated and not committed
+      - name: Generate .cabal file
+        run: |
+          curl -fsSL "https://github.com/sol/hpack/releases/download/${{ steps.versions.outputs.hpack }}/hpack_linux.gz" | gunzip > /usr/local/bin/hpack
+          chmod +x /usr/local/bin/hpack
+          hpack
       - uses: haskell-actions/run-fourmolu@v12
         with:
           version: ${{ steps.versions.outputs.fourmolu }}
