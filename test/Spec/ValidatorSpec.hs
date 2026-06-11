@@ -2,92 +2,15 @@
 
 module Spec.ValidatorSpec (spec) where
 
-import Data.IP (AddrRange, IPv4)
 import Data.List.NonEmpty (NonEmpty (..))
-import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import Test.Hspec
 import Validation (Validation (..))
-import WgForge.Spec.Validator.Internal (
-  validateAddressCollisions,
-  validateAddressesInCidr,
-  validateAddressing,
-  validateCidrCapacity,
-  validateEndpoints,
-  validateNatPairs,
-  validateNetwork,
-  validatePeerRoles,
-  validateReachability,
-  validateReservedAddresses,
-  validateSegmentSpec,
- )
 
-import WgForge.Error (ValidationError (..))
-import WgForge.Spec (
-  AllowedIpsMode (..),
-  Endpoint (..),
-  HostOrIp (..),
-  Network (..),
-  NetworkSpec (..),
-  PeerName (..),
-  PeerSpec (..),
-  Port (..),
-  SegmentName (..),
-  SegmentSpec (..),
- )
-
--- ---------------------------------------------------------------------------
--- Fixtures
-
-sn, sn2 :: SegmentName
-sn = SegmentName "seg"
-sn2 = SegmentName "seg2"
-
-alice, bob, carol, dave :: PeerName
-alice = PeerName "alice"
-bob = PeerName "bob"
-carol = PeerName "carol"
-dave = PeerName "dave"
-
-sampleEndpoint :: Endpoint
-sampleEndpoint = Endpoint (HostName "vpn.example.com") (Port 51820)
-
--- | Peer with an optional endpoint; all other fields are defaults.
-mkPeer :: Maybe Endpoint -> PeerSpec
-mkPeer ep = PeerSpec ep Nothing Nothing Nothing []
-
--- | Peer with an optional explicit address; all other fields are defaults.
-mkPeerAddr :: Maybe IPv4 -> PeerSpec
-mkPeerAddr addr = PeerSpec Nothing Nothing Nothing addr []
-
-sampleCidr :: AddrRange IPv4
-sampleCidr = read "10.0.0.0/24"
-
-sampleNetSpec :: NetworkSpec
-sampleNetSpec = NetworkSpec Nothing sampleCidr
-
--- | Build a Network from peer and segment lists.
-mkNetwork ::
-  [(PeerName, PeerSpec)] ->
-  [(SegmentName, SegmentSpec)] ->
-  Network
-mkNetwork ps segs =
-  Network sampleNetSpec (Map.fromList ps) (Map.fromList segs)
-
--- | Build a segmentless Network with the given CIDR and peers.
-mkAddrNetwork :: AddrRange IPv4 -> [(PeerName, PeerSpec)] -> Network
-mkAddrNetwork netCidr ps =
-  Network (NetworkSpec Nothing netCidr) (Map.fromList ps) Map.empty
-
--- ---------------------------------------------------------------------------
--- Helpers
-
-failureErrors :: Validation (NonEmpty e) a -> [e]
-failureErrors (Failure es) = NE.toList es
-failureErrors (Success _) = []
-
--- ---------------------------------------------------------------------------
--- Specs
+import Spec.Fixtures
+import WgForge.Error
+import WgForge.Spec
+import WgForge.Spec.Validator.Internal
 
 spec :: Spec
 spec = do
