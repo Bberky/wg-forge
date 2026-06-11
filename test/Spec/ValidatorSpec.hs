@@ -8,6 +8,19 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import Test.Hspec
 import Validation (Validation (..))
+import WgForge.Spec.Validator.Internal (
+  validateAddressCollisions,
+  validateAddressesInCidr,
+  validateAddressing,
+  validateCidrCapacity,
+  validateEndpoints,
+  validateNatPairs,
+  validateNetwork,
+  validatePeerRoles,
+  validateReachability,
+  validateReservedAddresses,
+  validateSegmentSpec,
+ )
 
 import WgForge.Error (ValidationError (..))
 import WgForge.Spec (
@@ -21,19 +34,6 @@ import WgForge.Spec (
   Port (..),
   SegmentName (..),
   SegmentSpec (..),
- )
-import WgForge.Spec.Validator (
-  validateAddressCollisions,
-  validateAddressesInCidr,
-  validateAddressing,
-  validateCidrCapacity,
-  validateEndpoints,
-  validateNatPairs,
-  validateNetwork,
-  validatePeerRoles,
-  validateReachability,
-  validateReservedAddresses,
-  validateSegmentSpec,
  )
 
 -- ---------------------------------------------------------------------------
