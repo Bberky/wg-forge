@@ -15,7 +15,6 @@ import-export-style: diff-friendly
 
 # Rules for grouping import declarations
 import-grouping: by-scope
-local-modules: [WgForge]
 
 # Whether to full-indent or half-indent 'where' bindings past the preceding body
 indent-wheres: false
@@ -75,4 +74,4 @@ fixities: []
 reexports: []
 
 # Modules defined by the current Cabal package for import grouping
-local-modules: []
+local-modules: [WgForge]

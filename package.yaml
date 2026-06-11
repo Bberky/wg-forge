@@ -27,6 +27,7 @@ dependencies:
   - aeson
   - yaml
   - bytestring
+  - validation-selective
 
 ghc-options:
   - -Wall
