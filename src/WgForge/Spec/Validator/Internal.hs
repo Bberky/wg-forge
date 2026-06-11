@@ -13,6 +13,7 @@ module WgForge.Spec.Validator.Internal (
   validateCidrCapacity,
 ) where
 
+import Control.Monad (guard)
 import Data.Bits (complement, shiftL, (.&.), (.|.))
 import Data.Foldable (traverse_)
 import Data.IP (AddrRange, IPv4, addrRangePair, fromIPv4w, isMatchedTo, mlen, toIPv4w)
@@ -60,12 +61,12 @@ validatePeerRoles ::
 validatePeerRoles sn seg@(HubSpoke hubs spokes _) =
   seg
     <$ traverse_
-      (failureIf True . PeerBothRoles sn)
+      (\p -> Failure $ PeerBothRoles sn p :| [])
       (hubs `intersect` spokes)
 validatePeerRoles sn seg@(Relay relays clients _) =
   seg
     <$ traverse_
-      (failureIf True . PeerBothRoles sn)
+      (\p -> Failure $ PeerBothRoles sn p :| [])
       (relays `intersect` clients)
 validatePeerRoles _ seg = pure seg
 
@@ -98,22 +99,22 @@ validateNatPairs net@(Network _ peerMap segMap) =
     (sn, seg) <- Map.toAscList segMap
     let edges = Set.toAscList $ Set.fromList [canonicPair e | e <- segmentEdges seg]
     (p1, p2) <- edges
-    case (lookupEndpoint p1, lookupEndpoint p2) of
-      (Nothing, Nothing) -> [(sn, p1, p2)]
-      _ -> []
+    guard (isNothing (lookupEndpoint p1) && isNothing (lookupEndpoint p2))
+    pure (sn, p1, p2)
   lookupEndpoint pn = Map.lookup pn peerMap >>= endpoint
   canonicPair (a, b) = (min a b, max a b)
 
 -- | Enumerate the tunnel edges produced by a segment.
 segmentEdges :: SegmentSpec -> [(PeerName, PeerName)]
-segmentEdges (FullMesh fmPeers) =
-  [(a, b) | (a : rest) <- tails fmPeers, b <- rest]
+segmentEdges (FullMesh fmPeers) = pairs fmPeers
 segmentEdges (HubSpoke hubs spokes _) =
-  [(h, s) | h <- hubs, s <- spokes]
-    ++ [(h1, h2) | (h1 : rest) <- tails hubs, h2 <- rest]
+  [(h, s) | h <- hubs, s <- spokes] ++ pairs hubs
 segmentEdges (Relay relays clients _) =
-  [(r, c) | r <- relays, c <- clients]
-    ++ [(r1, r2) | (r1 : rest) <- tails relays, r2 <- rest]
+  [(r, c) | r <- relays, c <- clients] ++ pairs relays
+
+-- | All unordered pairs of distinct elements, in list order.
+pairs :: [a] -> [(a, a)]
+pairs xs = [(a, b) | (a : rest) <- tails xs, b <- rest]
 
 -- | Validate that every peer in 'specPeers' appears in at least one segment.
 validateReachability :: Network -> Validation (NonEmpty ValidationError) Network
@@ -171,8 +172,7 @@ validateAddressCollisions net@(Network _ peerMap _) =
     Map.fromListWith (flip (++)) [(a, [pn]) | (pn, a) <- explicitAddresses peerMap]
   collisions = do
     (a, claimants) <- Map.toAscList claims
-    (p1 : rest) <- tails claimants
-    p2 <- rest
+    (p1, p2) <- pairs claimants
     pure (a, p1, p2)
 
 -- | Validate that the network CIDR can accommodate all peers.
@@ -193,8 +193,10 @@ networkAddress :: AddrRange IPv4 -> IPv4
 networkAddress range = toIPv4w (fromIPv4w (rangeBase range) .&. rangeMask range)
 
 broadcastAddress :: AddrRange IPv4 -> IPv4
-broadcastAddress range =
-  toIPv4w ((fromIPv4w (rangeBase range) .&. rangeMask range) .|. complement (rangeMask range))
+broadcastAddress range = toIPv4w (base .|. hostBits)
+ where
+  base = fromIPv4w (rangeBase range) .&. rangeMask range
+  hostBits = complement (rangeMask range)
 
 rangeBase :: AddrRange IPv4 -> IPv4
 rangeBase = fst . addrRangePair
