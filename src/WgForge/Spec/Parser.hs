@@ -28,7 +28,7 @@ import Data.IP (AddrRange, IPv4)
 import Data.Text (pack, unpack)
 import Data.Word (Word16)
 import Data.Yaml (ParseException (..), decodeEither', prettyPrintParseException)
-import Text.Read
+import Text.Read (readMaybe)
 
 import WgForge.Error (SpecError (..))
 import WgForge.Spec

@@ -18,7 +18,7 @@ where
 
 import Data.Aeson (FromJSON, FromJSONKey)
 import Data.IP (AddrRange, IPv4)
-import Data.Map (Map)
+import Data.Map.Strict (Map)
 import Data.Text (Text)
 import Data.Word (Word16)
 import GHC.Generics (Generic)

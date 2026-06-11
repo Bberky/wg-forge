@@ -5,4 +5,4 @@ module WgForge.Spec.Validator (
   validateNetwork,
 ) where
 
-import WgForge.Spec.Validator.Internal (validateNetwork)
+import WgForge.Spec.Validator.Internal

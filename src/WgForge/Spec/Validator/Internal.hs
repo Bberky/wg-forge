@@ -24,27 +24,8 @@ import qualified Data.Set as Set
 import Data.Word (Word32)
 import Validation (Validation (Failure), failureIf)
 
-import WgForge.Error (
-  ValidationError (
-    AddressCollision,
-    AddressIsReserved,
-    AddressOutOfCidr,
-    CidrOverflow,
-    InsufficientPeers,
-    IslandPeer,
-    MissingEndpoint,
-    NatPairInMesh,
-    PeerBothRoles
-  ),
- )
-import WgForge.Spec (
-  Network (..),
-  NetworkSpec (..),
-  PeerName,
-  PeerSpec (..),
-  SegmentName,
-  SegmentSpec (..),
- )
+import WgForge.Error
+import WgForge.Spec
 
 validateNetwork :: Network -> Validation (NonEmpty ValidationError) Network
 validateNetwork net@(Network _ _ segMap) =
