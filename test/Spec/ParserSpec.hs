@@ -5,48 +5,20 @@ module Spec.ParserSpec (spec) where
 
 import Data.Aeson (Result (..), Value (String), fromJSON, object, (.=))
 import qualified Data.ByteString.Char8 as BS8
-import Data.IP (AddrRange, IPv4, makeAddrRange, toIPv4)
+import Data.IP (toIPv4)
 import Data.List (isInfixOf)
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import Test.Hspec
 
-import WgForge.Error (SpecError (..))
-import WgForge.Spec (
-  AllowedIpsMode (..),
-  Endpoint (..),
-  HostOrIp (..),
-  Network (..),
-  NetworkSpec (..),
-  PeerName (..),
-  PeerSpec (..),
-  Port (..),
-  SegmentName (..),
-  SegmentSpec (..),
- )
-import WgForge.Spec.Parser (parseCidr, parseNetwork, parseNetworkFile)
-
-ipAddr1 :: IPv4
-ipAddr1 = toIPv4 [10, 0, 0, 0]
-
-ipAddr2 :: IPv4
-ipAddr2 = toIPv4 [192, 168, 1, 0]
-
-ipRange1 :: AddrRange IPv4
-ipRange1 = makeAddrRange ipAddr1 24
-
-ipRangeStr1 :: String
-ipRangeStr1 = "10.0.0.0/24"
-
-ipRange2 :: AddrRange IPv4
-ipRange2 = makeAddrRange ipAddr2 16
-
-ipRangeStr2 :: String
-ipRangeStr2 = "192.168.1.0/16"
+import Spec.Fixtures
+import WgForge.Error
+import WgForge.Spec
+import WgForge.Spec.Parser
 
 spec :: Spec
-spec =
-  describe "ParserSpec expecations" $ do
+spec = do
+  describe "parseCidr" $ do
     it "should parse a valid CIDR notation" $ do
       let input = ipRangeStr1
       let expected = Right ipRange1
@@ -59,6 +31,8 @@ spec =
       let input = "invalid_cidr"
       let expected = Left "Invalid CIDR notation: invalid_cidr"
       parseCidr input `shouldBe` expected
+
+  describe "NetworkSpec" $ do
     it "should parse valid NetworkSpec JSON" $ do
       let val = object ["name" .= ("Test Network" :: Text), "cidr" .= ipRangeStr1]
       let expected = NetworkSpec (Just "Test Network") ipRange1
@@ -72,6 +46,8 @@ spec =
       (fromJSON val :: Result NetworkSpec) `shouldSatisfy` \case
         Error err -> err == "Invalid CIDR notation: invalid_cidr"
         _ -> False
+
+  describe "AllowedIpsMode" $ do
     it "should parse valid AllowedIpsMode" $ do
       let mode1 = "peers"
       let mode2 = "subnet"
@@ -84,6 +60,8 @@ spec =
       (fromJSON mode :: Result AllowedIpsMode) `shouldSatisfy` \case
         Error _ -> True
         _ -> False
+
+  describe "Endpoint" $ do
     it "should parse endpoint with IPv4 host" $ do
       let val = String "10.0.0.1:51820"
       let expected = Endpoint (HostIp (toIPv4 [10, 0, 0, 1])) (Port 51820)
@@ -112,6 +90,8 @@ spec =
       (fromJSON val :: Result Endpoint) `shouldSatisfy` \case
         Error _ -> True
         _ -> False
+
+  describe "SegmentSpec" $ do
     it "should parse full-mesh segment" $ do
       let val = object ["topology" .= ("full-mesh" :: Text), "peers" .= (["alice", "bob"] :: [Text])]
       let expected = FullMesh [PeerName "alice", PeerName "bob"]
@@ -160,6 +140,8 @@ spec =
       (fromJSON val :: Result SegmentSpec) `shouldSatisfy` \case
         Error _ -> True
         _ -> False
+
+  describe "PeerSpec" $ do
     it "should parse full PeerSpec" $ do
       let val =
             object
@@ -186,6 +168,8 @@ spec =
       (fromJSON val :: Result PeerSpec) `shouldSatisfy` \case
         Error err -> err == "Invalid IPv4 address: not-an-ip"
         _ -> False
+
+  describe "Network" $ do
     it "should parse full Network document" $ do
       let val =
             object
@@ -219,6 +203,8 @@ spec =
       (fromJSON val :: Result Network) `shouldSatisfy` \case
         Error _ -> True
         _ -> False
+
+  describe "parseNetwork" $ do
     it "should parse a full YAML document" $ do
       let yaml =
             BS8.pack $
@@ -255,6 +241,8 @@ spec =
       parseNetwork yaml `shouldSatisfy` \case
         Left (SpecParseError msg) -> "Invalid CIDR notation" `isInfixOf` msg
         _ -> False
+
+  describe "unknown key rejection" $ do
     it "should reject an unknown key in network section" $ do
       let yaml =
             BS8.pack $
@@ -308,6 +296,8 @@ spec =
       parseNetwork yaml `shouldSatisfy` \case
         Left (SpecParseError msg) -> "Unknown field" `isInfixOf` msg
         _ -> False
+
+  describe "parseNetworkFile" $ do
     it "should parse a YAML spec file" $ do
       let expected =
             Network
