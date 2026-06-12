@@ -8,4 +8,16 @@ and this project adheres to the
 
 ## Unreleased
 
-## 0.1.0.0 - YYYY-MM-DD
+### Added
+
+- Network spec data structures (`NetworkSpec`, `PeerSpec`, `SegmentSpec`, endpoints)
+- YAML spec parsing with `aeson`/`yaml`, including CIDR and endpoint parsing
+- Spec validation with applicative error accumulation: topology integrity,
+  endpoint rules, reachability, extra keys, and addressing
+- Test suite (`hspec`) covering parsers and validators, with shared fixtures
+- CI with build, test, formatting (`fourmolu`) and lint (`hlint`) checks
+- Git hooks for conventional commits, formatting, and linting
+
+### Changed
+
+- License changed to MIT
