@@ -65,4 +65,6 @@ tests:
     dependencies:
       - wg-forge
       - hspec
+      - QuickCheck
       - containers
+      - iproute
