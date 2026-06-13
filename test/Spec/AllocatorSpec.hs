@@ -31,8 +31,8 @@ spec = describe "WgForge.Allocator.allocate" $ do
         `shouldBe` Map.fromList [(alice, ip 10 0 0 1)]
 
     it "never hands out the broadcast address on a /24" $ do
-      let peers = Map.fromList [(p, mkPeer Nothing) | p <- manyNames 253]
-          addrs = Map.elems (allocate range24 peers)
+      let pcs = Map.fromList [(p, mkPeer Nothing) | p <- manyNames 253]
+          addrs = Map.elems (allocate range24 pcs)
       addrs `shouldSatisfy` notElem (ip 10 0 0 255)
       addrs `shouldSatisfy` notElem (ip 10 0 0 0)
 
@@ -59,41 +59,41 @@ spec = describe "WgForge.Allocator.allocate" $ do
 -- Properties --------------------------------------------------------------
 
 prop_orderInsensitive :: AllocCase -> Property
-prop_orderInsensitive (AllocCase r peers) =
-  forAll (shuffle (Map.toList peers)) $ \shuffled ->
-    allocate r (Map.fromList shuffled) === allocate r peers
+prop_orderInsensitive (AllocCase r pcs) =
+  forAll (shuffle (Map.toList pcs)) $ \shuffled ->
+    allocate r (Map.fromList shuffled) === allocate r pcs
 
 prop_completeness :: AllocCase -> Bool
-prop_completeness (AllocCase r peers) =
-  Map.keysSet (allocate r peers) == Map.keysSet peers
+prop_completeness (AllocCase r pcs) =
+  Map.keysSet (allocate r pcs) == Map.keysSet pcs
 
 prop_injectivity :: AllocCase -> Bool
-prop_injectivity (AllocCase r peers) =
-  let addrs = Map.elems (allocate r peers)
+prop_injectivity (AllocCase r pcs) =
+  let addrs = Map.elems (allocate r pcs)
    in length addrs == Set.size (Set.fromList addrs)
 
 prop_containment :: AllocCase -> Bool
-prop_containment (AllocCase r peers) =
-  all inRange (Map.elems (allocate r peers))
+prop_containment (AllocCase r pcs) =
+  all inRange (Map.elems (allocate r pcs))
  where
   lo = w (networkAddress r)
   hi = w (broadcastAddress r)
   inRange a = let x = w a in x > lo && x < hi
 
 prop_explicitPreserved :: AllocCase -> Bool
-prop_explicitPreserved (AllocCase r peers) =
-  let result = allocate r peers
-   in and [Map.lookup nm result == Just a | (nm, spec') <- Map.toList peers, Just a <- [address spec']]
+prop_explicitPreserved (AllocCase r pcs) =
+  let result = allocate r pcs
+   in and [Map.lookup nm result == Just a | (nm, spec') <- Map.toList pcs, Just a <- [address spec']]
 
 prop_prefixStability :: AllocCase -> Property
-prop_prefixStability (AllocCase r peers) =
+prop_prefixStability (AllocCase r pcs) =
   not (null dynKeys) ==> forAll (elements dynKeys) $ \victim ->
-    let full = allocate r peers
-        reduced = allocate r (Map.delete victim peers)
-        before = filter (< victim) (Map.keys peers)
-     in all (\k -> Map.lookup k full == Map.lookup k reduced) before
+    let full = allocate r pcs
+        reduced = allocate r (Map.delete victim pcs)
+        preds = filter (< victim) (Map.keys pcs)
+     in all (\k -> Map.lookup k full == Map.lookup k reduced) preds
  where
-  dynKeys = [nm | (nm, spec') <- Map.toList peers, isNothing (address spec')]
+  dynKeys = [nm | (nm, spec') <- Map.toList pcs, isNothing (address spec')]
 
 -- Helpers -----------------------------------------------------------------
 
