@@ -29,12 +29,22 @@ module Spec.Fixtures (
 
   -- * Helpers
   failureErrors,
+
+  -- * Allocator generator
+  AllocCase (..),
+  genAllocCase,
 ) where
 
-import Data.IP (AddrRange, IPv4, makeAddrRange, toIPv4)
+import Data.Bits (complement, shiftL, (.&.))
+import Data.IP (AddrRange, IPv4, makeAddrRange, toIPv4, toIPv4w)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NE
+import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
+import qualified Data.Text as T
+import Data.Word (Word32)
+import Test.QuickCheck (Arbitrary (..), Gen, choose, elements, shuffle, vectorOf)
 import Validation (Validation (..))
 
 import WgForge.Spec
@@ -101,3 +111,54 @@ mkAddrNetwork netCidr ps =
 failureErrors :: Validation (NonEmpty e) a -> [e]
 failureErrors (Failure es) = NE.toList es
 failureErrors (Success _) = []
+
+-- | A valid allocator input: a CIDR with a peer map whose size never exceeds
+-- the addressable capacity, and whose explicit addresses are distinct, in
+-- range, and non-reserved. Constructed directly (no generate-and-filter).
+data AllocCase = AllocCase
+  { acRange :: AddrRange IPv4,
+    acPeers :: Map PeerName PeerSpec
+  }
+  deriving (Eq, Show)
+
+instance Arbitrary AllocCase where
+  arbitrary = genAllocCase
+
+genAllocCase :: Gen AllocCase
+genAllocCase = do
+  prefix <- choose (20, 30)
+  baseW <- arbitrary
+  let mask = complement (1 `shiftL` (32 - prefix) - 1) :: Word32
+      networkW = baseW .&. mask
+      range = makeAddrRange (toIPv4w networkW) prefix
+      capacity = (2 ^ (32 - prefix)) - 2 :: Int -- usable hosts (prefix <= 30)
+  n <- choose (0, min capacity 64)
+  names <- genDistinct n genName
+  shuffledNames <- shuffle names
+  numExplicit <- choose (0, n)
+  offsets <- genDistinct numExplicit (choose (1, capacity))
+  let (expNames, dynNames) = splitAt numExplicit shuffledNames
+      explicitPeers =
+        zipWith
+          (\nm off -> (nm, mkPeerAddr (Just (toIPv4w (networkW + fromIntegral off)))))
+          expNames
+          offsets
+      dynPeers = [(nm, mkPeer Nothing) | nm <- dynNames]
+  pure (AllocCase range (Map.fromList (explicitPeers ++ dynPeers)))
+
+-- | A valid peer name from @[a-z0-9]+@ (a subset of the spec grammar; no @-@).
+genName :: Gen PeerName
+genName = do
+  len <- choose (1, 8)
+  cs <- vectorOf len (elements (['a' .. 'z'] ++ ['0' .. '9']))
+  pure (PeerName (T.pack cs))
+
+-- | Draw @k@ distinct values from a generator (rejection on collision).
+genDistinct :: (Ord a) => Int -> Gen a -> Gen [a]
+genDistinct k gen = go Set.empty
+ where
+  go acc
+    | Set.size acc >= k = pure (Set.toList acc)
+    | otherwise = do
+        x <- gen
+        go (Set.insert x acc)

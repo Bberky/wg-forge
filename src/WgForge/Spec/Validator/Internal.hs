@@ -14,17 +14,17 @@ module WgForge.Spec.Validator.Internal (
 ) where
 
 import Control.Monad (guard)
-import Data.Bits (complement, shiftL, (.&.), (.|.))
+import Data.Bits (shiftL)
 import Data.Foldable (traverse_)
-import Data.IP (AddrRange, IPv4, addrRangePair, fromIPv4w, isMatchedTo, mlen, toIPv4w)
+import Data.IP (IPv4, isMatchedTo, mlen)
 import Data.List (intersect, tails)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
-import Data.Word (Word32)
 import Validation (Validation (Failure), failureIf)
 
+import WgForge.Cidr
 import WgForge.Error
 import WgForge.Spec
 
@@ -188,18 +188,3 @@ validateCidrCapacity net@(Network ns peerMap _) =
 explicitAddresses :: Map.Map PeerName PeerSpec -> [(PeerName, IPv4)]
 explicitAddresses peerMap =
   [(pn, a) | (pn, ps) <- Map.toAscList peerMap, Just a <- [address ps]]
-
-networkAddress :: AddrRange IPv4 -> IPv4
-networkAddress range = toIPv4w (fromIPv4w (rangeBase range) .&. rangeMask range)
-
-broadcastAddress :: AddrRange IPv4 -> IPv4
-broadcastAddress range = toIPv4w (base .|. hostBits)
- where
-  base = fromIPv4w (rangeBase range) .&. rangeMask range
-  hostBits = complement (rangeMask range)
-
-rangeBase :: AddrRange IPv4 -> IPv4
-rangeBase = fst . addrRangePair
-
-rangeMask :: AddrRange IPv4 -> Word32
-rangeMask range = complement (1 `shiftL` (32 - mlen range) - 1)
