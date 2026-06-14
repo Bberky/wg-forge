@@ -28,6 +28,8 @@ dependencies:
   - yaml
   - bytestring
   - validation-selective
+  - crypton
+  - memory
 
 ghc-options:
   - -Wall
