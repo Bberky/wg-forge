@@ -1,6 +1,8 @@
 import Test.Hspec
 
 import qualified Spec.AllocatorSpec as AllocatorSpec
+import qualified Spec.KeySpec as KeySpec
+import qualified Spec.KeystoreSpec as KeystoreSpec
 import qualified Spec.ParserSpec as ParserSpec
 import qualified Spec.ValidatorSpec as ValidatorSpec
 
@@ -9,3 +11,5 @@ main = hspec $ do
   ParserSpec.spec
   ValidatorSpec.spec
   AllocatorSpec.spec
+  KeySpec.spec
+  KeystoreSpec.spec

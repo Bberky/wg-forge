@@ -73,3 +73,7 @@ tests:
       - QuickCheck
       - containers
       - iproute
+      - bytestring
+      - crypton
+      - unix
+      - temporary
