@@ -30,6 +30,9 @@ dependencies:
   - validation-selective
   - crypton
   - memory
+  - unix
+  - directory
+  - filepath
 
 ghc-options:
   - -Wall
