@@ -8,15 +8,18 @@ module WgForge.Keystore (
   keyPath,
 ) where
 
-import Control.Monad (unless)
+import Control.Exception (IOException, try)
 import qualified Crypto.PubKey.Curve25519 as Curve25519
 import qualified Data.ByteString as BS
-import Data.Either (partitionEithers)
+import qualified Data.ByteString.Char8 as C8
+import Data.Char (isSpace)
 import qualified Data.Map.Strict as Map
 import Data.Text (unpack)
-import System.Directory (doesDirectoryExist)
+import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
-import System.Posix.Directory (createDirectory)
+import System.IO (hClose)
+import System.IO.Error (isDoesNotExistError)
+import System.Posix.Files (setFileMode)
 import System.Posix.IO (
   OpenFileFlags (..),
   OpenMode (..),
@@ -25,43 +28,59 @@ import System.Posix.IO (
   openFd,
  )
 
-import WgForge.Error (KeystoreError (MalformedKey))
+import WgForge.Error (KeystoreError (KeyIoError, MalformedKey))
 import WgForge.Key (PrivateKey (PrivateKey), decodePrivateKey, encodePrivateKey)
 import WgForge.Spec (PeerName (..))
 
--- | Check that the keystore directory exists and if not, create it with permissions 700.
+-- | Ensure the keystore directory exists with mode @0700@.
+-- Sets the mode explicitly after creation to avoid the umask window.
 ensureKeystoreDir :: FilePath -> IO ()
 ensureKeystoreDir dir = do
-  exists <- doesDirectoryExist dir
-  unless exists $ createDirectory dir 0o700
+  createDirectoryIfMissing True dir
+  setFileMode dir 0o700
 
 -- | Generate a new Curve25519 private key.
 -- The PRNG used is the system's secure random number generator.
 generatePrivateKey :: IO PrivateKey
 generatePrivateKey = PrivateKey <$> Curve25519.generateSecretKey
 
--- | Load a private key from the specified file path.
--- Returns an error if the file does not exist or if the key is malformed.
+-- | Load a private key for a peer.
+--
+-- A missing file yields @Right Nothing@ (no key yet); other IO failures yield
+-- @Left KeyIoError@; a file that exists but does not decode yields
+-- @Left MalformedKey@. Surrounding whitespace is trimmed before decoding, so
+-- files produced by @wg genkey@ (trailing newline) load cleanly.
 loadKey :: FilePath -> PeerName -> IO (Either KeystoreError (Maybe PrivateKey))
 loadKey dir peerName = do
   let path = keyPath dir peerName
-  bs <- BS.readFile path
-  case decodePrivateKey bs of
-    Nothing -> return $ Left (MalformedKey path "Invalid key format")
-    Just pk -> return $ Right (Just pk)
+  result <- try (BS.readFile path) :: IO (Either IOException BS.ByteString)
+  case result of
+    Left e
+      | isDoesNotExistError e -> return $ Right Nothing
+      | otherwise -> return $ Left (KeyIoError path (show e))
+    Right bs ->
+      case decodePrivateKey (trim bs) of
+        Left err -> return $ Left (MalformedKey path err)
+        Right pk -> return $ Right (Just pk)
+ where
+  trim = fst . C8.spanEnd isSpace . C8.dropWhile isSpace
 
--- | Write a private key to the specified file path with permissions 600.
--- Only creates the file if it does not already exist, to avoid overwriting existing keys.
+-- | Write a private key to @path@ with mode @0600@, never overwriting an
+-- existing file (@O_CREAT | O_EXCL@). The payload is base64 plus a single
+-- trailing newline, byte-identical to @wg genkey@.
 writeKey :: FilePath -> PrivateKey -> IO (Maybe KeystoreError)
 writeKey path pk = do
-  fd <- openFd path WriteOnly defaultFileFlags{creat = Just 0o600, exclusive = True}
-  handle <- fdToHandle fd
-  BS.hPut handle (encodePrivateKey pk)
-  return Nothing
+  result <- try go :: IO (Either IOException ())
+  return $ either (Just . KeyIoError path . show) (const Nothing) result
+ where
+  go = do
+    fd <- openFd path WriteOnly defaultFileFlags{creat = Just 0o600, exclusive = True}
+    handle <- fdToHandle fd
+    BS.hPut handle (encodePrivateKey pk <> C8.singleton '\n')
+    hClose handle
 
--- | Ensure that a private key exists for the given peer name.
--- If the key does not exist, generate a new one and write it to the keystore.
--- Returns the private key or an error if the operation fails.
+-- | Ensure a private key exists for a peer, generating and persisting one if
+-- absent. Existing keys are never regenerated.
 ensureKey :: FilePath -> PeerName -> IO (Either KeystoreError PrivateKey)
 ensureKey dir peerName = do
   let path = keyPath dir peerName
@@ -74,16 +93,13 @@ ensureKey dir peerName = do
       writeRes <- writeKey path pk
       return $ maybe (Right pk) Left writeRes
 
--- | Ensure that private keys exist for the given peer names.
--- If a key does not exist, generate a new one and write it to the keystore.
--- Returns a map of peer names to their private keys or an error if any operation fails.
-ensureKeys :: FilePath -> [PeerName] -> IO (Either [KeystoreError] (Map.Map PeerName PrivateKey))
+-- | Ensure private keys exist for the given peers, creating any that are
+-- missing. Returns the first error encountered, or the full key map on success.
+ensureKeys :: FilePath -> [PeerName] -> IO (Either KeystoreError (Map.Map PeerName PrivateKey))
 ensureKeys dir peerNames = do
+  ensureKeystoreDir dir
   results <- mapM (ensureKey dir) peerNames
-  let (errors, keys) = partitionEithers results
-  if null errors
-    then return $ Right (Map.fromList (zip peerNames keys))
-    else return $ Left errors
+  return $ Map.fromList . zip peerNames <$> sequence results
 
 -- | Get the path to a peer's key file in the keystore directory.
 keyPath :: FilePath -> PeerName -> FilePath
