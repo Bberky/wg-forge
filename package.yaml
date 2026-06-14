@@ -28,6 +28,11 @@ dependencies:
   - yaml
   - bytestring
   - validation-selective
+  - crypton
+  - memory
+  - unix
+  - directory
+  - filepath
 
 ghc-options:
   - -Wall
@@ -68,3 +73,7 @@ tests:
       - QuickCheck
       - containers
       - iproute
+      - bytestring
+      - crypton
+      - unix
+      - temporary

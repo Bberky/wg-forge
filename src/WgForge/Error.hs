@@ -1,4 +1,4 @@
-module WgForge.Error (SpecError (..), ValidationError (..)) where
+module WgForge.Error (SpecError (..), ValidationError (..), KeystoreError (..)) where
 
 import Data.IP (IPv4)
 
@@ -34,4 +34,13 @@ data ValidationError
     AddressCollision PeerName PeerName IPv4
   | -- | The network CIDR is too small to accommodate all peers.
     CidrOverflow Int Int
+  deriving (Eq, Show)
+
+data KeystoreError
+  = -- | A key file could not be read (missing, permissions, ...).
+    KeyIoError FilePath String
+  | -- | A key file is not valid base64 or does not decode to a valid private key.
+    MalformedKey FilePath String
+  | -- | A key file is expected for a peer but is missing.
+    MissingKey PeerName
   deriving (Eq, Show)
