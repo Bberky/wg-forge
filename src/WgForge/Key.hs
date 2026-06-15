@@ -14,8 +14,8 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as C8
 import Data.Coerce (coerce)
 
-newtype PrivateKey = PrivateKey Curve25519.SecretKey
-newtype PublicKey = PublicKey Curve25519.PublicKey
+newtype PrivateKey = PrivateKey Curve25519.SecretKey deriving (Eq)
+newtype PublicKey = PublicKey Curve25519.PublicKey deriving (Eq)
 
 -- | Redacting 'Show' so a secret never leaks into logs, errors, or test output.
 instance Show PrivateKey where
