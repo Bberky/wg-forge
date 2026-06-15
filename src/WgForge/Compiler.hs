@@ -33,8 +33,27 @@ data CompiledPeerEntry = CompiledPeerEntry
 
 compile ::
   Map PeerName PrivateKey -> Map PeerName IPv4 -> Network -> Map PeerName CompiledPeer
-compile _keys _addrs _net =
-  error "WgForge.Compiler.compile: not yet implemented"
+compile keys addrs net =
+  let
+    pubs = Map.map derivePublicKey keys
+    contrib =
+      Map.unionsWith (Map.unionWith Set.union) $
+        [segmentContribution (network net) addrs seg | seg <- Map.elems (segments net)]
+   in
+    Map.mapWithKey
+      ( \p spec ->
+          CompiledPeer
+            { ifacePrivKey = keys Map.! p,
+              ifaceAddress = addrs Map.! p,
+              ifaceListenPort = listenPort spec,
+              peerEntries =
+                Map.fromList
+                  [ (t, CompiledPeerEntry (pubs Map.! t) (WgForge.Spec.endpoint spec) ips (persistentKeepalive spec))
+                  | (t, ips) <- Map.toList (contrib Map.! p)
+                  ]
+            }
+      )
+      (peers net)
 
 -- | A single directed @(source, target, AllowedIPs)@ edge contributed by a segment.
 type Edge = (PeerName, PeerName, Set (AddrRange IPv4))
