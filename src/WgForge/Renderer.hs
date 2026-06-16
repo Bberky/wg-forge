@@ -8,7 +8,6 @@ module WgForge.Renderer (
 import qualified Data.ByteString.Char8 as C8
 import Data.IP (AddrRange, IPv4)
 import qualified Data.Map.Strict as Map
-import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import Prettyprinter
@@ -81,7 +80,7 @@ renderHost (HostName t) = pretty t
 renderHost (HostIp ip) = viaShow ip
 
 -- | Comma-separated @AllowedIPs@ in ascending order.
-renderAllowedIps :: Set (AddrRange IPv4) -> Doc ann
+renderAllowedIps :: Set.Set (AddrRange IPv4) -> Doc ann
 renderAllowedIps = hsep . punctuate comma . map viaShow . Set.toAscList
 
 -- | Stack blocks vertically, separated by a blank line.
