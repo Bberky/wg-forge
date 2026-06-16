@@ -27,6 +27,7 @@ dependencies:
   - aeson
   - yaml
   - bytestring
+  - prettyprinter
   - validation-selective
   - crypton
   - memory
