@@ -1,4 +1,6 @@
 module Main (main) where
 
+import qualified WgForge.CLI as CLI
+
 main :: IO ()
-main = putStrLn "wg-forge: CLI not implemented yet"
+main = CLI.run
