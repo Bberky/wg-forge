@@ -6,6 +6,7 @@ module WgForge.CLI.Options (
   InitOptions (..),
   GenerateOptions (..),
   parseOpts,
+  parsePrefs,
 ) where
 
 import Options.Applicative (
@@ -13,6 +14,7 @@ import Options.Applicative (
   Mod,
   Parser,
   ParserInfo,
+  ParserPrefs,
   command,
   fullDesc,
   header,
@@ -22,8 +24,10 @@ import Options.Applicative (
   info,
   long,
   metavar,
+  prefs,
   progDesc,
   short,
+  showHelpOnEmpty,
   strOption,
   switch,
   value,
@@ -108,6 +112,11 @@ validateCmd =
 programOpts :: Parser Options
 programOpts =
   Options <$> hsubparser (initCmd <> generateCmd <> validateCmd)
+
+-- | Parser preferences: when invoked with no arguments, show the full help
+--   text (with the command list) instead of a terse @Missing: COMMAND@ usage.
+parsePrefs :: ParserPrefs
+parsePrefs = prefs showHelpOnEmpty
 
 -- | The top-level parser, including @--help@.
 parseOpts :: ParserInfo Options

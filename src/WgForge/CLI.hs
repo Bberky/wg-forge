@@ -12,7 +12,7 @@ module WgForge.CLI (
 import Data.Bifunctor (first)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text.IO as TIO
-import Options.Applicative (execParser)
+import Options.Applicative (customExecParser)
 import System.Exit (exitWith)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (stderr)
@@ -33,7 +33,7 @@ import WgForge.Spec.Validator (validateNetwork)
 --   printing any error to stderr.
 run :: IO ()
 run = do
-  opts <- execParser parseOpts
+  opts <- customExecParser parsePrefs parseOpts
   result <- dispatch (optCommand opts)
   case result of
     Left err -> do
