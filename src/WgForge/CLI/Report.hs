@@ -4,11 +4,12 @@ module WgForge.CLI.Report (
   exitCodeFor,
 ) where
 
-import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty (NonEmpty, toList)
 import Data.Text (Text, pack)
-import System.Exit (ExitCode (ExitSuccess))
+import System.Exit (ExitCode (ExitFailure))
 
-import WgForge.Error (KeystoreError, SpecError, ValidationError)
+import WgForge.Error
+import WgForge.Spec (PeerName (PeerName))
 
 data AppError
   = AppSpec SpecError
@@ -17,10 +18,24 @@ data AppError
   | AppIO FilePath String
 
 renderAppError :: AppError -> Text
-renderAppError (AppSpec _) = pack "Specification error"
-renderAppError (AppValidation _) = pack "Validation errors"
-renderAppError (AppKeystore _) = pack "Keystore error"
-renderAppError (AppIO _ _) = pack "I/O error at"
+renderAppError (AppSpec err) =
+  pack "Specification error" <> case err of
+    YamlSyntaxError details -> pack $ ": YAML syntax error at " <> details
+    SpecParseError details -> pack $ ": Specification parse error: " <> details
+    SpecIoError details -> pack $ ": Specification I/O error: " <> details
+renderAppError (AppValidation err) = pack "Validation error: " <> pack (show (toList err))
+renderAppError (AppKeystore err) =
+  pack "Keystore error" <> case err of
+    KeyIoError path details -> pack $ ": I/O error at " <> path <> ": " <> details
+    MalformedKey path details -> pack $ ": Malformed key at " <> path <> ": " <> details
+    MissingKey (PeerName peer) -> pack $ ": Missing key for peer " <> show peer
+renderAppError (AppIO path details) = pack $ ": I/O error at " <> path <> ": " <> details
 
 exitCodeFor :: AppError -> ExitCode
-exitCodeFor _ = ExitSuccess
+exitCodeFor (AppSpec specErr) = case specErr of
+  YamlSyntaxError _ -> ExitFailure 2
+  SpecParseError _ -> ExitFailure 2
+  _ -> ExitFailure 3
+exitCodeFor (AppValidation _) = ExitFailure 2
+exitCodeFor (AppKeystore _) = ExitFailure 3
+exitCodeFor (AppIO _ _) = ExitFailure 3
