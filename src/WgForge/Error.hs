@@ -1,4 +1,4 @@
-module WgForge.Error (SpecError (..), ValidationError (..), KeystoreError (..)) where
+module WgForge.Error (SpecError (..), ValidationError (..), KeystoreError (..), FileError (..)) where
 
 import Data.IP (IPv4)
 
@@ -43,4 +43,9 @@ data KeystoreError
     MalformedKey FilePath String
   | -- | A key file is expected for a peer but is missing.
     MissingKey PeerName
+  deriving (Eq, Show)
+
+-- | A filesystem failure while creating directories or writing generated
+-- files. Carries the offending path and a human-readable detail.
+data FileError = FileError FilePath String
   deriving (Eq, Show)
