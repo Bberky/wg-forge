@@ -17,6 +17,7 @@ import Options.Applicative (
   hsubparser,
   info,
   long,
+  metavar,
   progDesc,
   short,
   strOption,
@@ -26,9 +27,8 @@ import System.Exit (exitWith)
 
 import WgForge.CLI.Report (AppError, exitCodeFor, renderAppError)
 
-data Options = Options
-  { optVerbose :: Bool,
-    optCommand :: Command
+newtype Options = Options
+  { optCommand :: Command
   }
 
 data Command
@@ -47,31 +47,67 @@ data GenerateOptions = GenerateOptions
     genKeyDir :: FilePath
   }
 
-verbose :: Parser Bool
-verbose = switch (long "verbose" <> short 'v' <> help "Enable verbose output")
-
 initOpts :: Parser Command
 initOpts =
   Init
     <$> ( InitOptions
-            <$> strOption (long "path" <> short 'p' <> help "Path to initialize the project in")
+            <$> strOption (long "path" <> short 'p' <> metavar "DIR" <> help "Path to initialize the project in")
             <*> switch (long "force" <> short 'f' <> help "Force initialization even if the directory is not empty")
         )
 
 initCmd :: Mod CommandFields Command
 initCmd = command "init" (info initOpts (progDesc "Initialize a new wg-forge project"))
 
+generateOpts :: Parser Command
+generateOpts =
+  Generate
+    <$> ( GenerateOptions
+            <$> strOption
+              (long "spec" <> short 's' <> metavar "FILE" <> help "Path to the network specification YAML file")
+            <*> strOption
+              ( long "out"
+                  <> short 'o'
+                  <> metavar "DIR"
+                  <> help "Output directory for generated WireGuard configurations"
+              )
+            <*> strOption
+              (long "keys" <> short 'k' <> metavar "DIR" <> help "Directory containing WireGuard private keys")
+        )
+
+generateCmd :: Mod CommandFields Command
+generateCmd =
+  command
+    "generate"
+    (info generateOpts (progDesc "Generate configurations from a network specification"))
+
+validateOpts :: Parser Command
+validateOpts =
+  Validate
+    <$> strOption
+      ( long "spec"
+          <> short 's'
+          <> metavar "FILE"
+          <> help "Path to the network specification YAML file to validate"
+      )
+
+validateCmd :: Mod CommandFields Command
+validateCmd =
+  command
+    "validate"
+    (info validateOpts (progDesc "Validate a network specification YAML file"))
+
 programOpts :: Parser Options
 programOpts =
-  Options <$> verbose <*> hsubparser initCmd
+  Options <$> hsubparser (initCmd <> generateCmd <> validateCmd)
 
 parseOpts :: ParserInfo Options
 parseOpts =
   info
     (helper <*> programOpts)
     ( fullDesc
-        <> progDesc "wg-forge: a WireGuard configuration generator"
-        <> header "wg-forge - generate WireGuard configs from a network specification"
+        <> header "wg-forge: a WireGuard© configuration generator"
+        <> progDesc
+          "Generate WireGuard© configurations from a high-level network specification, with support for validation, key management, and multiple network topologies."
     )
 
 run :: IO ()
