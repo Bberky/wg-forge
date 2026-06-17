@@ -71,14 +71,15 @@ generateOpts =
                   <> short 'o'
                   <> metavar "DIR"
                   <> value "out"
-                  <> help "Output directory for generated WireGuard configurations (default: out)"
+                  <> help
+                    "Output directory for generated configurations, relative to the spec unless absolute (default: out)"
               )
             <*> strOption
               ( long "keys"
                   <> short 'k'
                   <> metavar "DIR"
                   <> value "keys"
-                  <> help "Directory containing WireGuard private keys (default: keys)"
+                  <> help "Directory for WireGuard private keys, relative to the spec unless absolute (default: keys)"
               )
         )
 

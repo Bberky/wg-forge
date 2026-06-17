@@ -14,6 +14,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Text.IO as TIO
 import Options.Applicative (execParser)
 import System.Exit (exitWith)
+import System.FilePath (takeDirectory, (</>))
 import System.IO (stderr)
 import Validation (Validation (Failure, Success))
 
@@ -70,13 +71,19 @@ runValidate :: FilePath -> IO (Either AppError ())
 runValidate f = loadValidated f >>? \_ -> pure (Right ())
 
 -- | @generate@: the full pipeline → one @\<peer\>.conf@ per peer plus keys.
+--   Output directories are resolved relative to the spec's own directory (the
+--   project root), so the result is independent of the current directory; an
+--   absolute @--out@/@--keys@ overrides this.
 runGenerate :: GenerateOptions -> IO (Either AppError ())
 runGenerate (GenerateOptions spec out keyDir) =
   loadValidated spec >>? \net -> do
-    let addrs = allocate (cidr (network net)) (peers net)
-    fmap (first AppKeystore) (ensureKeys keyDir (Map.keys (peers net))) >>? \keys -> do
+    let base = takeDirectory spec
+        outDir = base </> out
+        keysDir = base </> keyDir
+        addrs = allocate (cidr (network net)) (peers net)
+    fmap (first AppKeystore) (ensureKeys keysDir (Map.keys (peers net))) >>? \keys -> do
       let compiled = compile keys addrs net
-      fmap (first fromFileError) (writeConfigs out compiled) >>? \stats -> do
+      fmap (first fromFileError) (writeConfigs outDir compiled) >>? \stats -> do
         putStrLn (summarizeWrites stats)
         pure (Right ())
 
