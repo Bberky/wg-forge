@@ -29,7 +29,7 @@ renderAppError (AppKeystore err) =
     KeyIoError path details -> pack $ ": I/O error at " <> path <> ": " <> details
     MalformedKey path details -> pack $ ": Malformed key at " <> path <> ": " <> details
     MissingKey (PeerName peer) -> pack $ ": Missing key for peer " <> show peer
-renderAppError (AppIO path details) = pack $ ": I/O error at " <> path <> ": " <> details
+renderAppError (AppIO path details) = pack $ "I/O error at " <> path <> ": " <> details
 
 exitCodeFor :: AppError -> ExitCode
 exitCodeFor (AppSpec specErr) = case specErr of
