@@ -1,46 +1,24 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
--- | The IO shell around the pure compiler core: parse argv, run the
---   parse → validate → compile → render → write pipeline, and map every
---   outcome to an exit code.
+-- | The IO shell around the pure compiler core: run the parsed command through
+--   the parse → validate → compile → render → write pipeline and map every
+--   outcome to an exit code. The option parser lives in "WgForge.CLI.Options".
 module WgForge.CLI (
   run,
   dispatch,
-  Options (..),
-  Command (..),
-  InitOptions (..),
-  GenerateOptions (..),
-  parseOpts,
+  module WgForge.CLI.Options,
 ) where
 
 import Control.Exception (IOException, try)
 import Data.Bifunctor (first)
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import Data.FileEmbed (embedFile)
 import qualified Data.Map.Strict as Map
-import Data.Text (Text, unpack)
+import Data.Text (unpack)
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Text.IO as TIO
-import Options.Applicative (
-  CommandFields,
-  Mod,
-  Parser,
-  ParserInfo,
-  command,
-  execParser,
-  fullDesc,
-  header,
-  help,
-  helper,
-  hsubparser,
-  info,
-  long,
-  metavar,
-  progDesc,
-  short,
-  strOption,
-  switch,
-  value,
- )
+import Options.Applicative (execParser)
 import System.Directory (
   createDirectoryIfMissing,
   doesDirectoryExist,
@@ -54,6 +32,7 @@ import System.IO (hClose, openTempFile, stderr)
 import Validation (Validation (Failure, Success))
 
 import WgForge.Allocator (allocate)
+import WgForge.CLI.Options
 import WgForge.CLI.Report (AppError (..), exitCodeFor, renderAppError)
 import WgForge.Compiler (CompiledPeer, compile)
 import WgForge.Keystore (ensureKeys, ensureKeystoreDir)
@@ -62,95 +41,8 @@ import WgForge.Spec (Network (..), NetworkSpec (cidr), PeerName (..))
 import WgForge.Spec.Parser (parseNetworkFile)
 import WgForge.Spec.Validator (validateNetwork)
 
-newtype Options = Options
-  { optCommand :: Command
-  }
-
-data Command
-  = Init InitOptions
-  | Validate FilePath
-  | Generate GenerateOptions
-
-data InitOptions = InitOptions
-  { initPath :: FilePath,
-    initForce :: Bool
-  }
-
-data GenerateOptions = GenerateOptions
-  { genSpec :: FilePath,
-    genOutDir :: FilePath,
-    genKeyDir :: FilePath
-  }
-
-initOpts :: Parser Command
-initOpts =
-  Init
-    <$> ( InitOptions
-            <$> strOption (long "path" <> short 'p' <> metavar "DIR" <> help "Path to initialize the project in")
-            <*> switch (long "force" <> short 'f' <> help "Force initialization even if the directory is not empty")
-        )
-
-initCmd :: Mod CommandFields Command
-initCmd = command "init" (info initOpts (progDesc "Initialize a new wg-forge project"))
-
-generateOpts :: Parser Command
-generateOpts =
-  Generate
-    <$> ( GenerateOptions
-            <$> strOption
-              (long "spec" <> short 's' <> metavar "FILE" <> help "Path to the network specification YAML file")
-            <*> strOption
-              ( long "out"
-                  <> short 'o'
-                  <> metavar "DIR"
-                  <> value "out"
-                  <> help "Output directory for generated WireGuard configurations (default: out)"
-              )
-            <*> strOption
-              ( long "keys"
-                  <> short 'k'
-                  <> metavar "DIR"
-                  <> value "keys"
-                  <> help "Directory containing WireGuard private keys (default: keys)"
-              )
-        )
-
-generateCmd :: Mod CommandFields Command
-generateCmd =
-  command
-    "generate"
-    (info generateOpts (progDesc "Generate configurations from a network specification"))
-
-validateOpts :: Parser Command
-validateOpts =
-  Validate
-    <$> strOption
-      ( long "spec"
-          <> short 's'
-          <> metavar "FILE"
-          <> help "Path to the network specification YAML file to validate"
-      )
-
-validateCmd :: Mod CommandFields Command
-validateCmd =
-  command
-    "validate"
-    (info validateOpts (progDesc "Validate a network specification YAML file"))
-
-programOpts :: Parser Options
-programOpts =
-  Options <$> hsubparser (initCmd <> generateCmd <> validateCmd)
-
-parseOpts :: ParserInfo Options
-parseOpts =
-  info
-    (helper <*> programOpts)
-    ( fullDesc
-        <> header "wg-forge: a WireGuard© configuration generator"
-        <> progDesc
-          "Generate WireGuard© configurations from a high-level network specification, with support for validation, key management, and multiple network topologies."
-    )
-
+-- | Parse argv, run the chosen command, and exit with the mapped code,
+--   printing any error to stderr.
 run :: IO ()
 run = do
   opts <- execParser parseOpts
@@ -161,6 +53,7 @@ run = do
       exitWith (exitCodeFor err)
     Right () -> pure ()
 
+-- | Route a parsed command to its handler.
 dispatch :: Command -> IO (Either AppError ())
 dispatch (Init o) = runInit o
 dispatch (Validate f) = runValidate f
@@ -264,32 +157,11 @@ runInit (InitOptions path force) = do
     if exists then not . null <$> listDirectory p else pure False
   scaffold p = do
     createDirectoryIfMissing True p
-    TIO.writeFile (p </> "network.yaml") initTemplate
+    BS.writeFile (p </> "network.yaml") initTemplate
     createDirectoryIfMissing True (p </> "out")
     ensureKeystoreDir (p </> "keys")
 
--- | A commented full-mesh starter spec written by @init@.
-initTemplate :: Text
-initTemplate =
-  "# wg-forge network specification\n\
-  \#\n\
-  \# A starter two-peer full mesh. Edit the peers and segments below,\n\
-  \# then run: wg-forge generate --spec network.yaml\n\
-  \\n\
-  \network:\n\
-  \  name: my-network\n\
-  \  cidr: 10.0.0.0/24\n\
-  \\n\
-  \peers:\n\
-  \  node-a:\n\
-  \    endpoint: a.example.com:51820\n\
-  \    listenPort: 51820\n\
-  \\n\
-  \  node-b:\n\
-  \    endpoint: b.example.com:51820\n\
-  \    listenPort: 51820\n\
-  \\n\
-  \segments:\n\
-  \  mesh:\n\
-  \    topology: full-mesh\n\
-  \    peers: [node-a, node-b]\n"
+-- | The commented full-mesh starter spec written by @init@, embedded at
+--   compile time from @data/network.template.yaml@.
+initTemplate :: ByteString
+initTemplate = $(embedFile "data/network.template.yaml")

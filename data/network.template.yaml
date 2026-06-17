@@ -1,0 +1,22 @@
+# wg-forge network specification
+#
+# A starter two-peer full mesh. Edit the peers and segments below,
+# then run: wg-forge generate --spec network.yaml
+
+network:
+  name: my-network
+  cidr: 10.0.0.0/24
+
+peers:
+  node-a:
+    endpoint: a.example.com:51820
+    listenPort: 51820
+
+  node-b:
+    endpoint: b.example.com:51820
+    listenPort: 51820
+
+segments:
+  mesh:
+    topology: full-mesh
+    peers: [node-a, node-b]
