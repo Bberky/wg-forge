@@ -5,6 +5,7 @@ module WgForge.CLI.Options (
   Command (..),
   InitOptions (..),
   GenerateOptions (..),
+  QROptions (..),
   parseOpts,
   parsePrefs,
 ) where
@@ -15,6 +16,7 @@ import Options.Applicative (
   Parser,
   ParserInfo,
   ParserPrefs,
+  argument,
   command,
   fullDesc,
   header,
@@ -24,10 +26,12 @@ import Options.Applicative (
   info,
   long,
   metavar,
+  optional,
   prefs,
   progDesc,
   short,
   showHelpOnEmpty,
+  str,
   strOption,
   switch,
   value,
@@ -41,6 +45,7 @@ data Command
   = Init InitOptions
   | Validate FilePath
   | Generate GenerateOptions
+  | QR QROptions
 
 data InitOptions = InitOptions
   { initPath :: FilePath,
@@ -51,6 +56,11 @@ data GenerateOptions = GenerateOptions
   { genSpec :: FilePath,
     genOutDir :: FilePath,
     genKeyDir :: FilePath
+  }
+
+data QROptions = QROptions
+  { qrOutput :: Maybe FilePath,
+    qrPeerConfig :: FilePath
   }
 
 initOpts :: Parser Command
@@ -109,9 +119,32 @@ validateCmd =
     "validate"
     (info validateOpts (progDesc "Validate a network specification YAML file"))
 
+qrOpts :: Parser Command
+qrOpts =
+  QR
+    <$> ( QROptions
+            <$> optional
+              ( strOption
+                  ( long "output"
+                      <> short 'o'
+                      <> metavar "FILE"
+                      <> help
+                        "Path to save the QR code image (PNG format). If not provided, the QR code will be printed to the terminal."
+                  )
+              )
+            <*> argument
+              str
+              ( metavar "FILE"
+                  <> help "Path to the WireGuard peer configuration file to encode as a QR code"
+              )
+        )
+
+qrCmd :: Mod CommandFields Command
+qrCmd = command "qr" (info qrOpts (progDesc "Generate a QR code from a peer config file"))
+
 programOpts :: Parser Options
 programOpts =
-  Options <$> hsubparser (initCmd <> generateCmd <> validateCmd)
+  Options <$> hsubparser (initCmd <> validateCmd <> generateCmd <> qrCmd)
 
 -- | Parser preferences: when invoked with no arguments, show the full help
 --   text (with the command list) instead of a terse @Missing: COMMAND@ usage.

@@ -25,6 +25,7 @@ import WgForge.Compiler (compile)
 import WgForge.Error (FileError (FileError))
 import WgForge.Keystore (ensureKeys)
 import WgForge.Output (scaffold, summarizeWrites, writeConfigs)
+import WgForge.QR (encodeToQr, renderQrToAnsii)
 import WgForge.Spec (Network (..), NetworkSpec (cidr))
 import WgForge.Spec.Parser (parseNetworkFile)
 import WgForge.Spec.Validator (validateNetwork)
@@ -46,6 +47,7 @@ dispatch :: Command -> IO (Either AppError ())
 dispatch (Init o) = runInit o
 dispatch (Validate f) = runValidate f
 dispatch (Generate o) = runGenerate o
+dispatch (QR o) = runQR o
 
 -- | Short-circuiting bind for the @IO (Either AppError a)@ pipeline: run the
 --   first step, stop on a 'Left', otherwise feed the result to the next step.
@@ -93,3 +95,12 @@ runInit (InitOptions path force) =
   fmap (first fromFileError) (scaffold force path) >>? \() -> do
     putStrLn ("Initialized wg-forge project in " ++ path)
     pure (Right ())
+
+runQR :: QROptions -> IO (Either AppError ())
+runQR o = do
+  conf <- TIO.readFile (qrPeerConfig o)
+  case encodeToQr conf of
+    Nothing -> pure (Left (AppQR "Failed to encode QR: content too long for any QR version"))
+    Just qr -> do
+      TIO.putStrLn (renderQrToAnsii qr)
+      pure (Right ())
