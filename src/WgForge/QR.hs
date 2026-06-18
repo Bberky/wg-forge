@@ -3,8 +3,10 @@
 module WgForge.QR (
   encodeToQr,
   renderQrToAnsii,
+  encodeQrToPng,
 ) where
 
+import Codec.Picture (encodePng)
 import Codec.QRCode (
   ErrorLevel (M),
   QRImage,
@@ -13,6 +15,8 @@ import Codec.QRCode (
   encodeText,
   toMatrix,
  )
+import Codec.QRCode.JuicyPixels (toImage)
+import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -24,9 +28,15 @@ data Color = White | Black
 encodeToQr :: Text -> Maybe QRImage
 encodeToQr = encodeText (defaultQRCodeOptions M) Utf8WithECI
 
+-- | Encode a QR code as PNG bytes, with a 4-module quiet zone and 10 pixels
+-- per module (a typical peer config yields a ~410x410 px, phone-scannable
+-- image).
+encodeQrToPng :: QRImage -> BL.ByteString
+encodeQrToPng = encodePng . toImage 4 10
+
 -- | Render a QR code for terminal display.
 renderQrToAnsii :: QRImage -> Text
-renderQrToAnsii = T.unlines . map renderRowPair . pairRows . addQuietZone . toMatrix White Black
+renderQrToAnsii = T.unlines . map renderRowPair . pairRows . addQuietZone . toMatrix Black White
 
 addQuietZone :: [[Color]] -> [[Color]]
 addQuietZone m = padRows ++ map (\row -> replicate 4 White ++ row ++ replicate 4 White) m ++ padRows

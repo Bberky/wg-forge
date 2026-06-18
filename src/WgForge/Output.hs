@@ -14,12 +14,16 @@ module WgForge.Output (
 
   -- * init
   scaffold,
+
+  -- * qr
+  writeQrPng,
 ) where
 
 import Control.Exception (IOException, try)
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BL
 import Data.FileEmbed (embedFile)
 import qualified Data.Map.Strict as Map
 import Data.Text (unpack)
@@ -107,6 +111,14 @@ scaffold force path = do
     BS.writeFile (path </> "network.yaml") template
     createDirectoryIfMissing True (path </> "out")
     ensureKeystoreDir (path </> "keys")
+
+-- | Write PNG bytes to a path for @qr --output@, surfacing IO failures (e.g. a
+--   missing parent directory) as 'FileError'. The pure encoding lives in
+--   "WgForge.QR"; this is just the disk edge.
+writeQrPng :: FilePath -> BL.ByteString -> IO (Either FileError ())
+writeQrPng path bytes =
+  first (FileError path . show)
+    <$> (try (BL.writeFile path bytes) :: IO (Either IOException ()))
 
 -- | Create a directory (and parents), surfacing IO failures as 'FileError'.
 ensureDir :: FilePath -> IO (Either FileError ())

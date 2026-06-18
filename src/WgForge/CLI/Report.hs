@@ -41,3 +41,4 @@ exitCodeFor (AppSpec specErr) = case specErr of
 exitCodeFor (AppValidation _) = ExitFailure 2
 exitCodeFor (AppKeystore _) = ExitFailure 3
 exitCodeFor (AppIO _ _) = ExitFailure 3
+exitCodeFor (AppQR _) = ExitFailure 3

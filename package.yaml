@@ -38,6 +38,8 @@ dependencies:
   - optparse-applicative
   - file-embed
   - qrcode-core
+  - qrcode-juicypixels
+  - JuicyPixels
 
 ghc-options:
   - -Wall
