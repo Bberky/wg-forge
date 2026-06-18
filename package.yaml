@@ -37,6 +37,7 @@ dependencies:
   - filepath
   - optparse-applicative
   - file-embed
+  - qrcode-core
 
 ghc-options:
   - -Wall
