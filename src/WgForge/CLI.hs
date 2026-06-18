@@ -9,8 +9,10 @@ module WgForge.CLI (
   module WgForge.CLI.Options,
 ) where
 
+import Control.Exception (IOException, try)
 import Data.Bifunctor (first)
 import qualified Data.Map.Strict as Map
+import Data.Text (Text)
 import qualified Data.Text.IO as TIO
 import Options.Applicative (customExecParser)
 import System.Exit (exitWith)
@@ -24,7 +26,8 @@ import WgForge.CLI.Report (AppError (..), exitCodeFor, renderAppError)
 import WgForge.Compiler (compile)
 import WgForge.Error (FileError (FileError))
 import WgForge.Keystore (ensureKeys)
-import WgForge.Output (scaffold, summarizeWrites, writeConfigs)
+import WgForge.Output (scaffold, summarizeWrites, writeConfigs, writeQrPng)
+import WgForge.QR (encodeQrToPng, encodeToQr, renderQrToAnsii)
 import WgForge.Spec (Network (..), NetworkSpec (cidr))
 import WgForge.Spec.Parser (parseNetworkFile)
 import WgForge.Spec.Validator (validateNetwork)
@@ -46,6 +49,7 @@ dispatch :: Command -> IO (Either AppError ())
 dispatch (Init o) = runInit o
 dispatch (Validate f) = runValidate f
 dispatch (Generate o) = runGenerate o
+dispatch (QR o) = runQR o
 
 -- | Short-circuiting bind for the @IO (Either AppError a)@ pipeline: run the
 --   first step, stop on a 'Left', otherwise feed the result to the next step.
@@ -93,3 +97,17 @@ runInit (InitOptions path force) =
   fmap (first fromFileError) (scaffold force path) >>? \() -> do
     putStrLn ("Initialized wg-forge project in " ++ path)
     pure (Right ())
+
+-- | @qr@: encode a peer config as a QR code. Without @--output@ the code is
+--   printed to the terminal; with it, a PNG is written to the given path and
+--   nothing is printed on success.
+runQR :: QROptions -> IO (Either AppError ())
+runQR (QROptions output confPath) = do
+  readResult <- try (TIO.readFile confPath) :: IO (Either IOException Text)
+  case readResult of
+    Left err -> pure (Left (AppIO confPath (show err)))
+    Right conf -> case encodeToQr conf of
+      Nothing -> pure (Left (AppQR "Failed to encode QR: content too long for any QR version"))
+      Just qr -> case output of
+        Nothing -> Right () <$ TIO.putStrLn (renderQrToAnsii qr)
+        Just path -> first fromFileError <$> writeQrPng path (encodeQrToPng qr)

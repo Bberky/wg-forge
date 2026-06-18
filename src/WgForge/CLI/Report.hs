@@ -16,6 +16,7 @@ data AppError
   | AppValidation (NonEmpty ValidationError)
   | AppKeystore KeystoreError
   | AppIO FilePath String
+  | AppQR String
 
 renderAppError :: AppError -> Text
 renderAppError (AppSpec err) =
@@ -30,6 +31,7 @@ renderAppError (AppKeystore err) =
     MalformedKey path details -> pack $ ": Malformed key at " <> path <> ": " <> details
     MissingKey (PeerName peer) -> pack $ ": Missing key for peer " <> show peer
 renderAppError (AppIO path details) = pack $ "I/O error at " <> path <> ": " <> details
+renderAppError (AppQR details) = pack $ "QR code error: " <> details
 
 exitCodeFor :: AppError -> ExitCode
 exitCodeFor (AppSpec specErr) = case specErr of
@@ -39,3 +41,4 @@ exitCodeFor (AppSpec specErr) = case specErr of
 exitCodeFor (AppValidation _) = ExitFailure 2
 exitCodeFor (AppKeystore _) = ExitFailure 3
 exitCodeFor (AppIO _ _) = ExitFailure 3
+exitCodeFor (AppQR _) = ExitFailure 3
