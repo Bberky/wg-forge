@@ -27,6 +27,7 @@ dependencies:
   - containers
   - aeson
   - yaml
+  - libyaml
   - bytestring
   - prettyprinter
   - validation-selective

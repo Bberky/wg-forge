@@ -13,6 +13,7 @@ import Control.Exception (IOException, try)
 import Control.Monad (unless)
 import Data.Bifunctor (first)
 import qualified Data.ByteString.Char8 as C8
+import Data.List.NonEmpty (nonEmpty)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text.IO as TIO
@@ -71,8 +72,8 @@ fromFileError (FileError path details) = AppIO path details
 -- | Parse and validate a spec file, accumulating all validation errors.
 loadValidated :: FilePath -> IO (Either AppError Network)
 loadValidated f =
-  fmap (first AppSpec) (parseNetworkFile f) >>? \net ->
-    case validateNetwork net of
+  fmap (first AppSpec) (parseNetworkFile f) >>? \(net, dups) ->
+    case maybe (Success net) Failure (nonEmpty dups) *> validateNetwork net of
       Success v -> pure (Right v)
       Failure es -> pure (Left (AppValidation es))
 
