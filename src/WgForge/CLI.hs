@@ -10,7 +10,10 @@ module WgForge.CLI (
 ) where
 
 import Control.Exception (IOException, try)
+import Control.Monad (unless)
 import Data.Bifunctor (first)
+import qualified Data.ByteString.Char8 as C8
+import Data.List.NonEmpty (nonEmpty)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text.IO as TIO
@@ -24,10 +27,13 @@ import WgForge.Allocator (allocate)
 import WgForge.CLI.Options
 import WgForge.CLI.Report (AppError (..), exitCodeFor, renderAppError)
 import WgForge.Compiler (compile)
+import WgForge.Diff (diffConfigs, isDirty, renderReport)
 import WgForge.Error (FileError (FileError))
+import WgForge.Key (PrivateKey, decodePrivateKey)
 import WgForge.Keystore (ensureKeys)
-import WgForge.Output (scaffold, summarizeWrites, writeConfigs, writeQrPng)
+import WgForge.Output (readConfigs, scaffold, summarizeWrites, writeConfigs, writeQrPng)
 import WgForge.QR (encodeQrToPng, encodeToQr, renderQrToAnsii)
+import WgForge.Renderer (renderConfig)
 import WgForge.Spec (Network (..), NetworkSpec (cidr))
 import WgForge.Spec.Parser (parseNetworkFile)
 import WgForge.Spec.Validator (validateNetwork)
@@ -49,6 +55,7 @@ dispatch :: Command -> IO (Either AppError ())
 dispatch (Init o) = runInit o
 dispatch (Validate f) = runValidate f
 dispatch (Generate o) = runGenerate o
+dispatch (Diff o) = runDiff o
 dispatch (QR o) = runQR o
 
 -- | Short-circuiting bind for the @IO (Either AppError a)@ pipeline: run the
@@ -65,8 +72,8 @@ fromFileError (FileError path details) = AppIO path details
 -- | Parse and validate a spec file, accumulating all validation errors.
 loadValidated :: FilePath -> IO (Either AppError Network)
 loadValidated f =
-  fmap (first AppSpec) (parseNetworkFile f) >>? \net ->
-    case validateNetwork net of
+  fmap (first AppSpec) (parseNetworkFile f) >>? \(net, dups) ->
+    case maybe (Success net) Failure (nonEmpty dups) *> validateNetwork net of
       Success v -> pure (Right v)
       Failure es -> pure (Left (AppValidation es))
 
@@ -91,9 +98,34 @@ runGenerate (GenerateOptions spec out keyDir) =
         putStrLn (summarizeWrites stats)
         pure (Right ())
 
+-- | @diff@: report how the spec would change the on-disk configs, without
+--   writing anything or touching the keystore. The full report goes to stdout;
+--   the result is 'AppDiffDirty' (exit 4) when they differ, @Right ()@ (exit 0)
+--   when they match. Out dir is resolved like @generate@'s.
+runDiff :: DiffOptions -> IO (Either AppError ())
+runDiff (DiffOptions out quiet spec) =
+  loadValidated spec >>? \net -> do
+    let outDir = takeDirectory spec </> out
+        addrs = allocate (cidr (network net)) (peers net)
+        keys = placeholderKey <$ peers net
+        compiled = compile keys addrs net
+        desired = Map.mapWithKey renderConfig compiled
+    fmap (first fromFileError) (readConfigs outDir) >>? \disk -> do
+      let report = diffConfigs desired disk
+      unless quiet (TIO.putStrLn (renderReport report))
+      pure (if isDirty report then Left AppDiffDirty else Right ())
+
+-- | A fixed, arbitrary private key used only so 'compile' is total during a
+--   diff. The @PrivateKey@/@PublicKey@ lines it produces are masked out before
+--   comparison (see "WgForge.Diff"), so the actual key material is irrelevant —
+--   diff never reads the real keystore.
+placeholderKey :: PrivateKey
+placeholderKey =
+  either error id (decodePrivateKey (C8.pack "GEtMFljNTXfN+YEDDFoa8k6ZCQPyCQf7OswTykMbhlg="))
+
 -- | @init@: scaffold a project directory with a starter spec, @out/@, @keys/@.
 runInit :: InitOptions -> IO (Either AppError ())
-runInit (InitOptions path force) =
+runInit (InitOptions force path) =
   fmap (first fromFileError) (scaffold force path) >>? \() -> do
     putStrLn ("Initialized wg-forge project in " ++ path)
     pure (Right ())

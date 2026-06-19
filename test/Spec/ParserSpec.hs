@@ -230,7 +230,7 @@ spec = do
                   ]
               )
               (Map.fromList [(SegmentName "main", FullMesh [PeerName "alice", PeerName "bob"])])
-      parseNetwork yaml `shouldBe` Right expected
+      parseNetwork yaml `shouldBe` Right (expected, [])
     it "should report malformed YAML as a syntax error" $ do
       let yaml = BS8.pack "network: [unclosed"
       parseNetwork yaml `shouldSatisfy` \case
@@ -297,6 +297,91 @@ spec = do
         Left (SpecParseError msg) -> "Unknown field" `isInfixOf` msg
         _ -> False
 
+  describe "duplicate keys" $ do
+    it "reports a duplicate peer name" $ do
+      let yaml =
+            BS8.pack $
+              unlines
+                [ "network:",
+                  "  cidr: 10.0.0.0/24",
+                  "peers:",
+                  "  alice:",
+                  "    address: 10.0.0.1",
+                  "  alice:",
+                  "    address: 10.0.0.2"
+                ]
+      fmap snd (parseNetwork yaml) `shouldBe` Right [DuplicatePeerName (PeerName "alice")]
+
+    it "reports a duplicate segment name" $ do
+      let yaml =
+            BS8.pack $
+              unlines
+                [ "network:",
+                  "  cidr: 10.0.0.0/24",
+                  "peers:",
+                  "  alice: {}",
+                  "  bob: {}",
+                  "segments:",
+                  "  main:",
+                  "    topology: full-mesh",
+                  "    peers: [alice, bob]",
+                  "  main:",
+                  "    topology: full-mesh",
+                  "    peers: [alice, bob]"
+                ]
+      fmap snd (parseNetwork yaml) `shouldBe` Right [DuplicateSegmentName (SegmentName "main")]
+
+    it "reports duplicate peer and segment names together" $ do
+      let yaml =
+            BS8.pack $
+              unlines
+                [ "network:",
+                  "  cidr: 10.0.0.0/24",
+                  "peers:",
+                  "  alice: {}",
+                  "  alice: {}",
+                  "segments:",
+                  "  main:",
+                  "    topology: full-mesh",
+                  "    peers: [alice]",
+                  "  main:",
+                  "    topology: full-mesh",
+                  "    peers: [alice]"
+                ]
+      case parseNetwork yaml of
+        Right (_, errs) ->
+          errs
+            `shouldMatchList` [ DuplicatePeerName (PeerName "alice"),
+                                DuplicateSegmentName (SegmentName "main")
+                              ]
+        Left e -> expectationFailure ("expected a parse, got " <> show e)
+
+    it "reports a peer named three times only once" $ do
+      let yaml =
+            BS8.pack $
+              unlines
+                [ "network:",
+                  "  cidr: 10.0.0.0/24",
+                  "peers:",
+                  "  alice: {}",
+                  "  alice: {}",
+                  "  alice: {}"
+                ]
+      fmap snd (parseNetwork yaml) `shouldBe` Right [DuplicatePeerName (PeerName "alice")]
+
+    it "ignores a duplicate field nested inside a peer" $ do
+      let yaml =
+            BS8.pack $
+              unlines
+                [ "network:",
+                  "  cidr: 10.0.0.0/24",
+                  "peers:",
+                  "  alice:",
+                  "    address: 10.0.0.1",
+                  "    address: 10.0.0.2"
+                ]
+      fmap snd (parseNetwork yaml) `shouldBe` Right []
+
   describe "parseNetworkFile" $ do
     it "should parse a YAML spec file" $ do
       let expected =
@@ -316,7 +401,7 @@ spec = do
               )
               (Map.fromList [(SegmentName "main", FullMesh [PeerName "alice", PeerName "bob"])])
       result <- parseNetworkFile "test/fixtures/network.yaml"
-      result `shouldBe` Right expected
+      result `shouldBe` Right (expected, [])
     it "should report a missing spec file as an IO error" $ do
       result <- parseNetworkFile "test/fixtures/does-not-exist.yaml"
       result `shouldSatisfy` \case

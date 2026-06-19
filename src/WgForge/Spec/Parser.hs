@@ -19,18 +19,22 @@ import Data.Aeson (
   (.:),
   (.:?),
  )
+import qualified Data.Aeson.Key as Key
 import Data.Aeson.KeyMap (keys)
-import Data.Aeson.Types (Parser)
-import Data.Bifunctor (first)
+import Data.Aeson.Types (JSONPathElement (..), Parser)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.IP (AddrRange, IPv4)
+import Data.List (nub, sortOn)
 import Data.Text (pack, unpack)
 import Data.Word (Word16)
-import Data.Yaml (ParseException (..), decodeEither', prettyPrintParseException)
+import Data.Yaml (ParseException (..), prettyPrintParseException)
+import Data.Yaml.Internal (Warning (..), decodeHelper)
+import System.IO.Unsafe (unsafePerformIO)
+import qualified Text.Libyaml as Libyaml
 import Text.Read (readMaybe)
 
-import WgForge.Error (SpecError (..))
+import WgForge.Error (SpecError (..), ValidationError (..))
 import WgForge.Spec
 
 instance FromJSON NetworkSpec where
@@ -105,17 +109,48 @@ instance FromJSON PeerSpec where
       <*> (o .:? "address" >>= traverse (either fail pure . parseIPv4))
       <*> o .:? "tags" .!= []
 
--- | Parse a YAML document into a 'Network'.
-parseNetwork :: ByteString -> Either SpecError Network
-parseNetwork = first fromParseException . decodeEither'
+-- | Parse a YAML document into a 'Network', together with any duplicate-key problems detected while decoding.
+parseNetwork :: ByteString -> Either SpecError (Network, [ValidationError])
+parseNetwork bs =
+  case decodeWithWarnings bs of
+    Left e -> Left (fromParseException e)
+    Right (warnings, net) -> Right (net, duplicateErrors warnings)
 
--- | Read and parse a YAML spec file into a 'Network'.
-parseNetworkFile :: FilePath -> IO (Either SpecError Network)
+-- | Read and parse a YAML spec file into a 'Network' (see 'parseNetwork').
+parseNetworkFile :: FilePath -> IO (Either SpecError (Network, [ValidationError]))
 parseNetworkFile path = do
   contents <- try (BS.readFile path)
   pure $ case contents of
     Left e -> Left $ SpecIoError (displayException (e :: IOException))
     Right bytes -> parseNetwork bytes
+
+-- | Decode a YAML document while preserving libyaml's warnings.
+decodeWithWarnings ::
+  (FromJSON a) => ByteString -> Either ParseException ([Warning], a)
+decodeWithWarnings bs = unsafePerformIO $ do
+  res <- decodeHelper (Libyaml.decode bs)
+  pure $ case res of
+    Left e -> Left e
+    Right (_, Left s) -> Left (AesonException s)
+    Right (warnings, Right a) -> Right (warnings, a)
+
+-- | Map libyaml duplicate-key 'Warning's to the corresponding 'ValidationError's.
+duplicateErrors :: [Warning] -> [ValidationError]
+duplicateErrors warnings =
+  sortOn show (nub [e | DuplicateKey path <- warnings, Just e <- [toError path]])
+ where
+  toError [a, b] = pathError a b `orElse` pathError b a
+  toError _ = Nothing
+  pathError section nameKey = do
+    nm <- keyText nameKey
+    case keyText section of
+      Just "peers" -> Just (DuplicatePeerName (PeerName nm))
+      Just "segments" -> Just (DuplicateSegmentName (SegmentName nm))
+      _ -> Nothing
+  keyText (Key k) = Just (Key.toText k)
+  keyText _ = Nothing
+  orElse (Just x) _ = Just x
+  orElse Nothing y = y
 
 fromParseException :: ParseException -> SpecError
 fromParseException (AesonException msg) = SpecParseError msg

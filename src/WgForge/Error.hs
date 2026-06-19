@@ -34,6 +34,14 @@ data ValidationError
     AddressCollision PeerName PeerName IPv4
   | -- | The network CIDR is too small to accommodate all peers.
     CidrOverflow Int Int
+  | -- | A peer is referenced by a segment but not declared in 'specPeers'.
+    UnknownPeerRef SegmentName PeerName
+  | -- | Multiple peers share the same name, which is not allowed.
+    DuplicatePeerName PeerName
+  | -- | Multiple segments share the same name, which is not allowed.
+    DuplicateSegmentName SegmentName
+  | -- | Peer name must contain only alphanumeric characters, hyphens, and must not be empty.
+    InvalidPeerName PeerName
   deriving (Eq, Show)
 
 data KeystoreError

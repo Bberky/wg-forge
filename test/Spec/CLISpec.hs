@@ -4,6 +4,7 @@ module Spec.CLISpec (spec) where
 
 import Control.Monad ((>=>))
 import qualified Data.ByteString as BS
+import Data.List.NonEmpty (toList)
 import Options.Applicative (defaultPrefs, execParserPure, getParseResult)
 import System.Directory (doesFileExist)
 import System.FilePath ((</>))
@@ -12,6 +13,9 @@ import System.Posix.Files (getFileStatus, modificationTimeHiRes)
 import Test.Hspec
 
 import WgForge.CLI
+import WgForge.CLI.Report (AppError (..))
+import WgForge.Error (ValidationError (..))
+import WgForge.Spec (PeerName (..))
 
 -- | Drive the option parser over an argv vector, returning the parsed command.
 parse :: [String] -> Maybe Command
@@ -35,16 +39,36 @@ sampleSpec =
   \    topology: full-mesh\n\
   \    peers: [node-a, node-b]\n"
 
+-- | A spec with a duplicate @alice@ peer (a parse-time duplicate) and an
+--   unreferenced @carol@ peer (a validation-time island), used to prove the two
+--   error sources accumulate into a single failure.
+dupSpec :: BS.ByteString
+dupSpec =
+  "network:\n\
+  \  cidr: 10.0.0.0/24\n\
+  \peers:\n\
+  \  alice:\n\
+  \    endpoint: a.example.com:51820\n\
+  \  alice:\n\
+  \    endpoint: a.example.com:51820\n\
+  \  bob:\n\
+  \    endpoint: b.example.com:51820\n\
+  \  carol: {}\n\
+  \segments:\n\
+  \  main:\n\
+  \    topology: full-mesh\n\
+  \    peers: [alice, bob]\n"
+
 spec :: Spec
 spec = describe "WgForge.CLI" $ do
   describe "parseOpts" $ do
     it "parses validate with a spec path" $
-      case parse ["validate", "--spec", "x.yaml"] of
+      case parse ["validate", "x.yaml"] of
         Just (Validate f) -> f `shouldBe` "x.yaml"
         _ -> expectationFailure "expected Validate"
 
     it "defaults generate's out and keys directories" $
-      case parse ["generate", "--spec", "x.yaml"] of
+      case parse ["generate", "x.yaml"] of
         Just (Generate g) -> do
           genSpec g `shouldBe` "x.yaml"
           genOutDir g `shouldBe` "out"
@@ -52,7 +76,7 @@ spec = describe "WgForge.CLI" $ do
         _ -> expectationFailure "expected Generate"
 
     it "honours explicit generate -o/-k overrides" $
-      case parse ["generate", "-s", "x.yaml", "-o", "cfg", "-k", "secrets"] of
+      case parse ["generate", "-o", "cfg", "-k", "secrets", "x.yaml"] of
         Just (Generate g) -> do
           genOutDir g `shouldBe` "cfg"
           genKeyDir g `shouldBe` "secrets"
@@ -110,6 +134,20 @@ spec = describe "WgForge.CLI" $ do
             dir </> "out" </> "node-b.conf",
             dir </> "keys" </> "node-a.key"
           ]
+
+  describe "validate (integration)" $
+    it "accumulates a duplicate peer name with other validation errors" $
+      withSystemTempDirectory "wgf-cli" $ \dir -> do
+        let specPath = dir </> "network.yaml"
+        BS.writeFile specPath dupSpec
+
+        r <- dispatch (Validate specPath)
+        case r of
+          Left (AppValidation es) -> do
+            let errs = toList es
+            errs `shouldContain` [DuplicatePeerName (PeerName "alice")]
+            errs `shouldContain` [IslandPeer (PeerName "carol")]
+          _ -> expectationFailure "expected AppValidation with accumulated errors"
  where
   isNothingCmd Nothing = True
   isNothingCmd _ = False
