@@ -66,11 +66,11 @@ spec = describe "WgForge.Diff" $ do
         BS.writeFile specPath sampleSpec
         _ <- dispatch (Generate (GenerateOptions specPath outDir keyDir))
 
-        clean <- dispatch (Diff (DiffOptions specPath outDir))
+        clean <- dispatch (Diff (DiffOptions outDir False specPath))
         isRight clean `shouldBe` True
 
         BS.writeFile specPath sampleSpecExtraPeer
-        dirty <- dispatch (Diff (DiffOptions specPath outDir))
+        dirty <- dispatch (Diff (DiffOptions outDir False specPath))
         isLeft dirty `shouldBe` True
 
 -- | Diffing any config map against itself yields no changes, regardless of the
