@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 -- | Internal validation machinery. No API stability guarantees.
 module WgForge.Spec.Validator.Internal (
   validateNetwork,
@@ -15,9 +17,10 @@ module WgForge.Spec.Validator.Internal (
 
 import Control.Monad (guard)
 import Data.Bits (shiftL)
+import Data.Char (isAlphaNum)
 import Data.Foldable (traverse_)
 import Data.IP (IPv4, isMatchedTo, mlen)
-import Data.List (intersect, tails)
+import Data.List (intersect, sort, tails)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isNothing)
@@ -36,6 +39,7 @@ validateNetwork net@(Network _ _ segMap) =
     <* validateNatPairs net
     <* validateReachability net
     <* validateAddressing net
+    <* validateStructure net
 
 -- | Validate that each segment has enough peers and has no role conflicts.
 validateSegmentSpec ::
@@ -188,3 +192,18 @@ validateCidrCapacity net@(Network ns peerMap _) =
 explicitAddresses :: Map.Map PeerName PeerSpec -> [(PeerName, IPv4)]
 explicitAddresses peerMap =
   [(pn, a) | (pn, ps) <- Map.toAscList peerMap, Just a <- [address ps]]
+
+peersInSegment :: SegmentSpec -> [PeerName]
+peersInSegment (FullMesh ps) = ps
+peersInSegment (HubSpoke hs ss _) = hs ++ ss
+peersInSegment (Relay rs cs _) = rs ++ cs
+
+validateStructure :: Network -> Validation (NonEmpty ValidationError) Network
+validateStructure net@(Network _ peerMap segMap) =
+  net
+    <$ traverse_
+      (\(sn, p) -> Failure $ UnknownPeerRef sn p :| [])
+      unknownPeers
+ where
+  peersBySegment = [(sn, p) | sn <- Map.keys segMap, p <- peersInSegment (segMap Map.! sn)]
+  unknownPeers = sort $ filter (\(_, p) -> Map.notMember p peerMap) peersBySegment
