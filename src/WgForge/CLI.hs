@@ -102,7 +102,7 @@ runGenerate (GenerateOptions spec out keyDir) =
 --   the result is 'AppDiffDirty' (exit 4) when they differ, @Right ()@ (exit 0)
 --   when they match. Out dir is resolved like @generate@'s.
 runDiff :: DiffOptions -> IO (Either AppError ())
-runDiff (DiffOptions spec out quiet) =
+runDiff (DiffOptions out quiet spec) =
   loadValidated spec >>? \net -> do
     let outDir = takeDirectory spec </> out
         addrs = allocate (cidr (network net)) (peers net)
@@ -124,7 +124,7 @@ placeholderKey =
 
 -- | @init@: scaffold a project directory with a starter spec, @out/@, @keys/@.
 runInit :: InitOptions -> IO (Either AppError ())
-runInit (InitOptions path force) =
+runInit (InitOptions force path) =
   fmap (first fromFileError) (scaffold force path) >>? \() -> do
     putStrLn ("Initialized wg-forge project in " ++ path)
     pure (Right ())

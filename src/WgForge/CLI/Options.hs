@@ -11,6 +11,7 @@ module WgForge.CLI.Options (
   parsePrefs,
 ) where
 
+import Data.String (IsString)
 import Options.Applicative (
   CommandFields,
   Mod,
@@ -50,20 +51,20 @@ data Command
   | QR QROptions
 
 data InitOptions = InitOptions
-  { initPath :: FilePath,
-    initForce :: Bool
+  { initForce :: Bool,
+    initPath :: FilePath
   }
 
 data GenerateOptions = GenerateOptions
-  { genSpec :: FilePath,
-    genOutDir :: FilePath,
-    genKeyDir :: FilePath
+  { genOutDir :: FilePath,
+    genKeyDir :: FilePath,
+    genSpec :: FilePath
   }
 
 data DiffOptions = DiffOptions
-  { diffSpec :: FilePath,
-    diffOutDir :: FilePath,
-    diffQuiet :: Bool
+  { diffOutDir :: FilePath,
+    diffQuiet :: Bool,
+    diffSpec :: FilePath
   }
 
 data QROptions = QROptions
@@ -75,35 +76,15 @@ initOpts :: Parser Command
 initOpts =
   Init
     <$> ( InitOptions
-            <$> strOption (long "path" <> short 'p' <> metavar "DIR" <> help "Path to initialize the project in")
-            <*> switch (long "force" <> short 'f' <> help "Force initialization even if the directory is not empty")
+            <$> switch (long "force" <> short 'f' <> help "Force initialization even if the directory is not empty")
+            <*> strOption (long "path" <> short 'p' <> metavar "DIR" <> help "Path to initialize the project in")
         )
 
 initCmd :: Mod CommandFields Command
 initCmd = command "init" (info initOpts (progDesc "Initialize a new wg-forge project"))
 
 generateOpts :: Parser Command
-generateOpts =
-  Generate
-    <$> ( GenerateOptions
-            <$> strOption
-              (long "spec" <> short 's' <> metavar "FILE" <> help "Path to the network specification YAML file")
-            <*> strOption
-              ( long "out"
-                  <> short 'o'
-                  <> metavar "DIR"
-                  <> value "out"
-                  <> help
-                    "Output directory for generated configurations, relative to the spec unless absolute (default: out)"
-              )
-            <*> strOption
-              ( long "keys"
-                  <> short 'k'
-                  <> metavar "DIR"
-                  <> value "keys"
-                  <> help "Directory for WireGuard private keys, relative to the spec unless absolute (default: keys)"
-              )
-        )
+generateOpts = Generate <$> (GenerateOptions <$> outOpt <*> keysOpt <*> specArg)
 
 generateCmd :: Mod CommandFields Command
 generateCmd =
@@ -115,21 +96,13 @@ diffOpts :: Parser Command
 diffOpts =
   Diff
     <$> ( DiffOptions
-            <$> strOption
-              (long "spec" <> short 's' <> metavar "FILE" <> help "Path to the network specification YAML file")
-            <*> strOption
-              ( long "out"
-                  <> short 'o'
-                  <> metavar "DIR"
-                  <> value "out"
-                  <> help
-                    "Directory of generated configurations to compare against, relative to the spec unless absolute (default: out)"
-              )
+            <$> outOpt
             <*> switch
               ( long "quiet"
                   <> short 'q'
                   <> help "Suppress output of unchanged files"
               )
+            <*> specArg
         )
 
 diffCmd :: Mod CommandFields Command
@@ -139,14 +112,7 @@ diffCmd =
     (info diffOpts (progDesc "Show how the specification differs from the configurations on disk"))
 
 validateOpts :: Parser Command
-validateOpts =
-  Validate
-    <$> strOption
-      ( long "spec"
-          <> short 's'
-          <> metavar "FILE"
-          <> help "Path to the network specification YAML file to validate"
-      )
+validateOpts = Validate <$> specArg
 
 validateCmd :: Mod CommandFields Command
 validateCmd =
@@ -195,4 +161,28 @@ parseOpts =
         <> header "wg-forge: a WireGuard© configuration generator"
         <> progDesc
           "Generate WireGuard© configurations from a high-level network specification, with support for validation, key management, and multiple network topologies."
+    )
+
+specArg :: Parser FilePath
+specArg = argument str (metavar "FILE" <> help "Path to the network specification YAML file")
+
+outOpt :: Parser FilePath
+outOpt =
+  strOption
+    ( long "out"
+        <> short 'o'
+        <> metavar "DIR"
+        <> value "out"
+        <> help
+          "Directory of generated configurations to compare against, relative to the spec unless absolute (default: out)"
+    )
+
+keysOpt :: Parser FilePath
+keysOpt =
+  strOption
+    ( long "keys"
+        <> short 'k'
+        <> metavar "DIR"
+        <> value "keys"
+        <> help "Directory for WireGuard private keys, relative to the spec unless absolute (default: keys)"
     )
