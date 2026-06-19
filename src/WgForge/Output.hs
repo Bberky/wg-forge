@@ -12,6 +12,9 @@ module WgForge.Output (
   writeConfigs,
   summarizeWrites,
 
+  -- * diff
+  readConfigs,
+
   -- * init
   scaffold,
 
@@ -26,8 +29,9 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.FileEmbed (embedFile)
 import qualified Data.Map.Strict as Map
-import Data.Text (unpack)
+import Data.Text (Text, pack, unpack)
 import Data.Text.Encoding (encodeUtf8)
+import qualified Data.Text.IO as TIO
 import System.Directory (
   createDirectoryIfMissing,
   doesDirectoryExist,
@@ -35,7 +39,7 @@ import System.Directory (
   listDirectory,
   renameFile,
  )
-import System.FilePath ((</>))
+import System.FilePath (dropExtension, takeExtension, (</>))
 import System.IO (hClose, openTempFile)
 
 import WgForge.Compiler (CompiledPeer)
@@ -92,6 +96,21 @@ writeConfigIfChanged dir (pn@(PeerName name), cp) = do
         hClose h
         renameFile tmp target
         pure Written
+
+-- | Read every @\<peer\>.conf@ in @dir@ back into memory, keyed by peer name,
+--   for @diff@ to compare against the spec. A non-existent directory yields an
+--   empty map (a never-generated project, where every peer is \"added\"); any IO
+--   failure surfaces as a 'FileError'.
+readConfigs :: FilePath -> IO (Either FileError (Map.Map PeerName Text))
+readConfigs dir = do
+  first (FileError dir . show) <$> (try go :: IO (Either IOException (Map.Map PeerName Text)))
+ where
+  go = do
+    names <- listDirectory dir
+    Map.fromList <$> mapM readOne (filter ((== ".conf") . takeExtension) names)
+  readOne name = do
+    text <- TIO.readFile (dir </> name)
+    pure (PeerName (pack (dropExtension name)), text)
 
 -- | Scaffold a project at @path@: a starter @network.yaml@, an @out/@
 --   directory, and a @0700@ @keys/@ keystore. Refuses an existing non-empty
