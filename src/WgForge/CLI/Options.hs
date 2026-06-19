@@ -62,7 +62,8 @@ data GenerateOptions = GenerateOptions
 
 data DiffOptions = DiffOptions
   { diffSpec :: FilePath,
-    diffOutDir :: FilePath
+    diffOutDir :: FilePath,
+    diffQuiet :: Bool
   }
 
 data QROptions = QROptions
@@ -123,6 +124,11 @@ diffOpts =
                   <> value "out"
                   <> help
                     "Directory of generated configurations to compare against, relative to the spec unless absolute (default: out)"
+              )
+            <*> switch
+              ( long "quiet"
+                  <> short 'q'
+                  <> help "Suppress output of unchanged files"
               )
         )
 

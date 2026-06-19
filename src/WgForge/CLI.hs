@@ -10,6 +10,7 @@ module WgForge.CLI (
 ) where
 
 import Control.Exception (IOException, try)
+import Control.Monad (unless)
 import Data.Bifunctor (first)
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.Map.Strict as Map
@@ -101,7 +102,7 @@ runGenerate (GenerateOptions spec out keyDir) =
 --   the result is 'AppDiffDirty' (exit 4) when they differ, @Right ()@ (exit 0)
 --   when they match. Out dir is resolved like @generate@'s.
 runDiff :: DiffOptions -> IO (Either AppError ())
-runDiff (DiffOptions spec out) =
+runDiff (DiffOptions spec out quiet) =
   loadValidated spec >>? \net -> do
     let outDir = takeDirectory spec </> out
         addrs = allocate (cidr (network net)) (peers net)
@@ -110,7 +111,7 @@ runDiff (DiffOptions spec out) =
         desired = Map.mapWithKey renderConfig compiled
     fmap (first fromFileError) (readConfigs outDir) >>? \disk -> do
       let report = diffConfigs desired disk
-      TIO.putStr (renderReport report)
+      unless quiet (TIO.putStrLn (renderReport report))
       pure (if isDirty report then Left AppDiffDirty else Right ())
 
 -- | A fixed, arbitrary private key used only so 'compile' is total during a
