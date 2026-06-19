@@ -5,6 +5,7 @@ module WgForge.CLI.Options (
   Command (..),
   InitOptions (..),
   GenerateOptions (..),
+  DiffOptions (..),
   QROptions (..),
   parseOpts,
   parsePrefs,
@@ -45,6 +46,7 @@ data Command
   = Init InitOptions
   | Validate FilePath
   | Generate GenerateOptions
+  | Diff DiffOptions
   | QR QROptions
 
 data InitOptions = InitOptions
@@ -56,6 +58,11 @@ data GenerateOptions = GenerateOptions
   { genSpec :: FilePath,
     genOutDir :: FilePath,
     genKeyDir :: FilePath
+  }
+
+data DiffOptions = DiffOptions
+  { diffSpec :: FilePath,
+    diffOutDir :: FilePath
   }
 
 data QROptions = QROptions
@@ -103,6 +110,28 @@ generateCmd =
     "generate"
     (info generateOpts (progDesc "Generate configurations from a network specification"))
 
+diffOpts :: Parser Command
+diffOpts =
+  Diff
+    <$> ( DiffOptions
+            <$> strOption
+              (long "spec" <> short 's' <> metavar "FILE" <> help "Path to the network specification YAML file")
+            <*> strOption
+              ( long "out"
+                  <> short 'o'
+                  <> metavar "DIR"
+                  <> value "out"
+                  <> help
+                    "Directory of generated configurations to compare against, relative to the spec unless absolute (default: out)"
+              )
+        )
+
+diffCmd :: Mod CommandFields Command
+diffCmd =
+  command
+    "diff"
+    (info diffOpts (progDesc "Show how the specification differs from the configurations on disk"))
+
 validateOpts :: Parser Command
 validateOpts =
   Validate
@@ -144,7 +173,7 @@ qrCmd = command "qr" (info qrOpts (progDesc "Generate a QR code from a peer conf
 
 programOpts :: Parser Options
 programOpts =
-  Options <$> hsubparser (initCmd <> validateCmd <> generateCmd <> qrCmd)
+  Options <$> hsubparser (initCmd <> validateCmd <> generateCmd <> diffCmd <> qrCmd)
 
 -- | Parser preferences: when invoked with no arguments, show the full help
 --   text (with the command list) instead of a terse @Missing: COMMAND@ usage.
