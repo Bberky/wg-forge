@@ -74,12 +74,10 @@ jobs:
       - name: Cache Stack artifacts
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.stack
-            .stack-work
-          key: ${{ runner.os }}-stack-${{ hashFiles('stack.yaml.lock', 'package.yaml') }}
+          path: ~/.stack
+          key: ${{ runner.os }}-stack-v2-${{ hashFiles('stack.yaml.lock', 'package.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-stack-
+            ${{ runner.os }}-stack-v2-
 
       - name: Build (pedantic, with coverage)
         run: stack build --pedantic --test --no-run-tests --coverage
