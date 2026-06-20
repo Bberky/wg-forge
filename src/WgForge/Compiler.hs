@@ -2,7 +2,6 @@ module WgForge.Compiler (
   CompiledPeer (..),
   CompiledPeerEntry (..),
   compile,
-  segmentContribution,
 ) where
 
 import Data.IP (AddrRange, IPv4, makeAddrRange, toIPv4w)

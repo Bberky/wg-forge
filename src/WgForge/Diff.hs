@@ -13,7 +13,7 @@ import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import WgForge.Spec (PeerName (..))
+import WgForge.Spec
 
 -- | The result of comparing the goal peer's config against the on-disk config.
 data PeerDiff = Added | Removed | Modified | Unchanged

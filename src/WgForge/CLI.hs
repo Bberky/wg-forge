@@ -5,8 +5,6 @@
 --   @init@ scaffold) in "WgForge.Output".
 module WgForge.CLI (
   run,
-  dispatch,
-  module WgForge.CLI.Options,
 ) where
 
 import Control.Exception (IOException, try)

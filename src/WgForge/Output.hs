@@ -7,18 +7,11 @@
 --   mirroring "WgForge.Keystore" — the CLI decides what to do, the mechanics
 --   live here. Failures surface as 'FileError'.
 module WgForge.Output (
-  -- * generate
   WriteStat (..),
   writeConfigs,
   summarizeWrites,
-
-  -- * diff
   readConfigs,
-
-  -- * init
   scaffold,
-
-  -- * qr
   writeQrPng,
 ) where
 
@@ -44,11 +37,11 @@ import System.Directory (
 import System.FilePath (dropExtension, takeExtension, (</>))
 import System.IO (hClose, openTempFile)
 
-import WgForge.Compiler (CompiledPeer)
-import WgForge.Error (FileError (FileError))
-import WgForge.Keystore (ensureKeystoreDir)
-import WgForge.Renderer (renderConfig)
-import WgForge.Spec (PeerName (..))
+import WgForge.Compiler
+import WgForge.Error
+import WgForge.Keystore
+import WgForge.Renderer
+import WgForge.Spec
 
 -- | Outcome of writing a single config file.
 data WriteStat = Written | Unchanged
@@ -81,8 +74,8 @@ summarizeWrites stats =
 -- | Write a peer's config idempotently: skip when the on-disk bytes already
 --   match, otherwise write to a temp file and atomically rename it into place.
 writeConfigIfChanged :: FilePath -> (PeerName, CompiledPeer) -> IO (Either FileError WriteStat)
-writeConfigIfChanged dir (pn@(PeerName name), cp) = do
-  let target = dir </> (T.unpack name ++ ".conf")
+writeConfigIfChanged dir (pn@(PeerName pnText), cp) = do
+  let target = dir </> (T.unpack pnText ++ ".conf")
       bytes = encodeUtf8 (renderConfig pn cp)
   result <- try (go target bytes) :: IO (Either IOException WriteStat)
   pure (first (FileError target . show) result)
@@ -93,7 +86,7 @@ writeConfigIfChanged dir (pn@(PeerName name), cp) = do
     if same
       then pure Unchanged
       else do
-        (tmp, h) <- openTempFile dir (T.unpack name ++ ".conf.tmp")
+        (tmp, h) <- openTempFile dir (T.unpack pnText ++ ".conf.tmp")
         BS.hPut h bytes
         hClose h
         renameFile tmp target
