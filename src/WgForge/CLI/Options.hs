@@ -11,7 +11,6 @@ module WgForge.CLI.Options (
   parsePrefs,
 ) where
 
-import Data.String (IsString)
 import Options.Applicative (
   CommandFields,
   Mod,

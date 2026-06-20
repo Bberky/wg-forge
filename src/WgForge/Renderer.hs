@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 -- | Pretty-print compiled peers into @wg-quick@ configuration files.
 module WgForge.Renderer (
   renderConfig,

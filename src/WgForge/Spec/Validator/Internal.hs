@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 -- | Internal validation machinery. No API stability guarantees.
 module WgForge.Spec.Validator.Internal (
   validateNetwork,
@@ -17,7 +15,6 @@ module WgForge.Spec.Validator.Internal (
 
 import Control.Monad (guard)
 import Data.Bits (shiftL)
-import Data.Char (isAlphaNum)
 import Data.Foldable (traverse_)
 import Data.IP (IPv4, isMatchedTo, mlen)
 import Data.List (intersect, sort, tails)

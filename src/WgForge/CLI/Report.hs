@@ -21,19 +21,19 @@ data AppError
 
 renderAppError :: AppError -> Text
 renderAppError (AppSpec err) =
-  pack "Specification error" <> case err of
+  "Specification error" <> case err of
     YamlSyntaxError details -> pack $ ": YAML syntax error at " <> details
     SpecParseError details -> pack $ ": Specification parse error: " <> details
     SpecIoError details -> pack $ ": Specification I/O error: " <> details
-renderAppError (AppValidation err) = pack "Validation error: " <> pack (show (toList err))
+renderAppError (AppValidation err) = "Validation error: " <> pack (show (toList err))
 renderAppError (AppKeystore err) =
-  pack "Keystore error" <> case err of
+  "Keystore error" <> case err of
     KeyIoError path details -> pack $ ": I/O error at " <> path <> ": " <> details
     MalformedKey path details -> pack $ ": Malformed key at " <> path <> ": " <> details
     MissingKey (PeerName peer) -> pack $ ": Missing key for peer " <> show peer
 renderAppError (AppIO path details) = pack $ "I/O error at " <> path <> ": " <> details
 renderAppError (AppQR details) = pack $ "QR code error: " <> details
-renderAppError AppDiffDirty = pack "diff: on-disk configuration differs from the specification"
+renderAppError AppDiffDirty = "diff: on-disk configuration differs from the specification"
 
 exitCodeFor :: AppError -> ExitCode
 exitCodeFor (AppSpec specErr) = case specErr of
