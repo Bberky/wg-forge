@@ -102,9 +102,9 @@ readConfigs dir = do
   go = do
     names <- listDirectory dir
     Map.fromList <$> mapM readOne (filter ((== ".conf") . takeExtension) names)
-  readOne name = do
-    text <- TIO.readFile (dir </> name)
-    pure (PeerName (T.pack (dropExtension name)), text)
+  readOne f = do
+    text <- TIO.readFile (dir </> f)
+    pure (PeerName (T.pack (dropExtension f)), text)
 
 -- | Scaffold a project at @path@: a starter @network.yaml@, an @out/@
 --   directory, and a @0700@ @keys/@ keystore. Refuses an existing non-empty

@@ -51,7 +51,7 @@ renderReport :: Map PeerName PeerDiff -> Text
 renderReport report =
   T.unlines (map line (Map.toAscList report) ++ ["", summary])
  where
-  line (PeerName name, d) = T.unwords [symbol, name, label]
+  line (PeerName pn, d) = T.unwords [symbol, pn, label]
    where
     (symbol, label) = symbolLabel d
   summary =
