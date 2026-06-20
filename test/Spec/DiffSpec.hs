@@ -2,18 +2,19 @@
 
 module Spec.DiffSpec (spec) where
 
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.Either (isLeft, isRight)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text as T
+import System.Exit (ExitCode (ExitFailure, ExitSuccess))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
 import Test.QuickCheck
 
-import WgForge.CLI
-import WgForge.Diff
+import Spec.CliHarness (runCli)
+import WgForge.Diff (PeerDiff (..), diffConfigs, isDirty, normalize)
 import WgForge.Spec (PeerName (..))
 
 spec :: Spec
@@ -64,14 +65,14 @@ spec = describe "WgForge.Diff" $ do
             outDir = dir </> "out"
             keyDir = dir </> "keys"
         BS.writeFile specPath sampleSpec
-        _ <- dispatch (Generate (GenerateOptions specPath outDir keyDir))
+        _ <- runCli ["generate", "-o", outDir, "-k", keyDir, specPath]
 
-        clean <- dispatch (Diff (DiffOptions outDir False specPath))
-        isRight clean `shouldBe` True
+        (clean, _) <- runCli ["diff", "-o", outDir, specPath]
+        clean `shouldBe` ExitSuccess
 
         BS.writeFile specPath sampleSpecExtraPeer
-        dirty <- dispatch (Diff (DiffOptions outDir False specPath))
-        isLeft dirty `shouldBe` True
+        (dirty, _) <- runCli ["diff", "-o", outDir, specPath]
+        dirty `shouldBe` ExitFailure 4 -- diff dirty
 
 -- | Diffing any config map against itself yields no changes, regardless of the
 --   (key-masked) contents.
@@ -124,7 +125,7 @@ sampleConfOtherKeys =
     ]
 
 -- | A minimal valid two-peer full-mesh spec.
-sampleSpec :: BS.ByteString
+sampleSpec :: ByteString
 sampleSpec =
   "network:\n\
   \  name: test-net\n\
@@ -140,7 +141,7 @@ sampleSpec =
   \    peers: [node-a, node-b]\n"
 
 -- | 'sampleSpec' with a third peer added to the mesh.
-sampleSpecExtraPeer :: BS.ByteString
+sampleSpecExtraPeer :: ByteString
 sampleSpecExtraPeer =
   "network:\n\
   \  name: test-net\n\

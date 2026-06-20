@@ -47,7 +47,17 @@ import Data.Word (Word32)
 import Test.QuickCheck (Arbitrary (..), Gen, choose, elements, shuffle, vectorOf)
 import Validation (Validation (..))
 
-import WgForge.Spec
+import WgForge.Spec (
+  Endpoint (..),
+  HostOrIp (..),
+  Network (..),
+  NetworkSpec (..),
+  PeerName (..),
+  PeerSpec (..),
+  Port (..),
+  SegmentName (..),
+  SegmentSpec,
+ )
 
 ipAddr1 :: IPv4
 ipAddr1 = toIPv4 [10, 0, 0, 0]

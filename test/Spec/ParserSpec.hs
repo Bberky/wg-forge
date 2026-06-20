@@ -11,31 +11,32 @@ import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import Test.Hspec
 
-import Spec.Fixtures
-import WgForge.Error
-import WgForge.Spec
-import WgForge.Spec.Parser
+import Spec.Fixtures (ipRange1, ipRange2, ipRangeStr1, ipRangeStr2)
+import WgForge.Error (SpecError (..), ValidationError (..))
+import WgForge.Spec (
+  AllowedIpsMode (..),
+  Endpoint (..),
+  HostOrIp (..),
+  Network (..),
+  NetworkSpec (..),
+  PeerName (..),
+  PeerSpec (..),
+  Port (..),
+  SegmentName (..),
+  SegmentSpec (..),
+ )
+import WgForge.Spec.Parser (parseNetwork, parseNetworkFile)
 
 spec :: Spec
 spec = do
-  describe "parseCidr" $ do
-    it "should parse a valid CIDR notation" $ do
-      let input = ipRangeStr1
-      let expected = Right ipRange1
-      parseCidr input `shouldBe` expected
-    it "should parse another valid CIDR notation" $ do
-      let input = ipRangeStr2
-      let expected = Right ipRange2
-      parseCidr input `shouldBe` expected
-    it "should fail to parse an invalid CIDR notation" $ do
-      let input = "invalid_cidr"
-      let expected = Left "Invalid CIDR notation: invalid_cidr"
-      parseCidr input `shouldBe` expected
-
   describe "NetworkSpec" $ do
     it "should parse valid NetworkSpec JSON" $ do
       let val = object ["name" .= ("Test Network" :: Text), "cidr" .= ipRangeStr1]
       let expected = NetworkSpec (Just "Test Network") ipRange1
+      fromJSON val `shouldBe` Success expected
+    it "should parse a NetworkSpec with a different CIDR" $ do
+      let val = object ["cidr" .= ipRangeStr2]
+      let expected = NetworkSpec Nothing ipRange2
       fromJSON val `shouldBe` Success expected
     it "should parse NetworkSpec JSON with missing optional name" $ do
       let val = object ["cidr" .= ipRangeStr1]

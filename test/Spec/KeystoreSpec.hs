@@ -14,7 +14,7 @@ import Test.Hspec
 import Spec.Fixtures (alice, bob, carol)
 import WgForge.Error (KeystoreError (MalformedKey))
 import WgForge.Key (encodePrivateKey)
-import WgForge.Keystore
+import WgForge.Keystore (ensureKeys, ensureKeystoreDir, generatePrivateKey, keyPath, loadKey)
 
 spec :: Spec
 spec = describe "WgForge.Keystore" $ do

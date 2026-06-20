@@ -10,7 +10,13 @@ import Data.Word (Word8)
 import Test.Hspec
 import Test.QuickCheck
 
-import WgForge.Key
+import WgForge.Key (
+  PrivateKey (..),
+  decodePrivateKey,
+  derivePublicKey,
+  encodePrivateKey,
+  encodePublicKey,
+ )
 
 spec :: Spec
 spec = describe "WgForge.Key" $ do

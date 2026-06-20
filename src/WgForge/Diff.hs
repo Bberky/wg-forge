@@ -1,3 +1,6 @@
+-- | This module provides functionality to compare the desired WireGuard peer configurations
+--   against the existing configurations on disk. It classifies each peer as added, removed,
+--   modified, or unchanged, and provides a human-readable report of the differences.
 module WgForge.Diff (
   PeerDiff (..),
   diffConfigs,

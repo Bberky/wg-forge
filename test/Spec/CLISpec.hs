@@ -3,26 +3,32 @@
 module Spec.CLISpec (spec) where
 
 import Control.Monad ((>=>))
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.List.NonEmpty (toList)
+import Data.List (isInfixOf)
 import Options.Applicative (defaultPrefs, execParserPure, getParseResult)
 import System.Directory (doesFileExist)
+import System.Exit (ExitCode (ExitFailure, ExitSuccess))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Posix.Files (getFileStatus, modificationTimeHiRes)
 import Test.Hspec
 
-import WgForge.CLI
-import WgForge.CLI.Report (AppError (..))
-import WgForge.Error (ValidationError (..))
-import WgForge.Spec (PeerName (..))
+import Spec.CliHarness (runCli)
+import WgForge.CLI (
+  Command (..),
+  GenerateOptions (keyDir, outDir),
+  InitOptions (force, path),
+  Options (Options),
+  parseOpts,
+ )
 
 -- | Drive the option parser over an argv vector, returning the parsed command.
 parse :: [String] -> Maybe Command
-parse args = optCommand <$> getParseResult (execParserPure defaultPrefs parseOpts args)
+parse args = (\(Options c) -> c) <$> getParseResult (execParserPure defaultPrefs parseOpts args)
 
 -- | A minimal valid two-peer full-mesh spec (parses and validates cleanly).
-sampleSpec :: BS.ByteString
+sampleSpec :: ByteString
 sampleSpec =
   "network:\n\
   \  name: test-net\n\
@@ -42,7 +48,7 @@ sampleSpec =
 -- | A spec with a duplicate @alice@ peer (a parse-time duplicate) and an
 --   unreferenced @carol@ peer (a validation-time island), used to prove the two
 --   error sources accumulate into a single failure.
-dupSpec :: BS.ByteString
+dupSpec :: ByteString
 dupSpec =
   "network:\n\
   \  cidr: 10.0.0.0/24\n\
@@ -70,26 +76,25 @@ spec = describe "WgForge.CLI" $ do
     it "defaults generate's out and keys directories" $
       case parse ["generate", "x.yaml"] of
         Just (Generate g) -> do
-          genSpec g `shouldBe` "x.yaml"
-          genOutDir g `shouldBe` "out"
-          genKeyDir g `shouldBe` "keys"
+          g.outDir `shouldBe` "out"
+          g.keyDir `shouldBe` "keys"
         _ -> expectationFailure "expected Generate"
 
     it "honours explicit generate -o/-k overrides" $
       case parse ["generate", "-o", "cfg", "-k", "secrets", "x.yaml"] of
         Just (Generate g) -> do
-          genOutDir g `shouldBe` "cfg"
-          genKeyDir g `shouldBe` "secrets"
+          g.outDir `shouldBe` "cfg"
+          g.keyDir `shouldBe` "secrets"
         _ -> expectationFailure "expected Generate"
 
     it "parses init with and without --force" $ do
       case parse ["init", "--path", "proj"] of
         Just (Init o) -> do
-          initPath o `shouldBe` "proj"
-          initForce o `shouldBe` False
+          o.path `shouldBe` "proj"
+          o.force `shouldBe` False
         _ -> expectationFailure "expected Init"
       case parse ["init", "--path", "proj", "--force"] of
-        Just (Init o) -> initForce o `shouldBe` True
+        Just (Init o) -> o.force `shouldBe` True
         _ -> expectationFailure "expected Init"
 
     it "fails when validate's required --spec is missing" $
@@ -99,21 +104,21 @@ spec = describe "WgForge.CLI" $ do
     it "writes one config per peer and is byte-stable across reruns" $
       withSystemTempDirectory "wgf-cli" $ \dir -> do
         let specPath = dir </> "network.yaml"
-            outDir = dir </> "out"
-            keyDir = dir </> "keys"
-            confA = outDir </> "node-a.conf"
-            confB = outDir </> "node-b.conf"
+            out = dir </> "out"
+            keys = dir </> "keys"
+            confA = out </> "node-a.conf"
+            confB = out </> "node-b.conf"
         BS.writeFile specPath sampleSpec
 
-        r1 <- dispatch (Generate (GenerateOptions specPath outDir keyDir))
-        isRightUnit r1 `shouldBe` True
+        (code1, _) <- runCli ["generate", "-o", out, "-k", keys, specPath]
+        code1 `shouldBe` ExitSuccess
         mapM_ (doesFileExist >=> (`shouldBe` True)) [confA, confB]
 
         bytesA1 <- BS.readFile confA
         mtimeA1 <- modificationTimeHiRes <$> getFileStatus confA
 
-        r2 <- dispatch (Generate (GenerateOptions specPath outDir keyDir))
-        isRightUnit r2 `shouldBe` True
+        (code2, _) <- runCli ["generate", "-o", out, "-k", keys, specPath]
+        code2 `shouldBe` ExitSuccess
 
         bytesA2 <- BS.readFile confA
         mtimeA2 <- modificationTimeHiRes <$> getFileStatus confA
@@ -126,8 +131,8 @@ spec = describe "WgForge.CLI" $ do
 
         -- Defaults ("out", "keys") are relative; they must land beside the
         -- spec at <dir>/out and <dir>/keys, regardless of the process CWD.
-        r <- dispatch (Generate (GenerateOptions specPath "out" "keys"))
-        isRightUnit r `shouldBe` True
+        (code, _) <- runCli ["generate", specPath]
+        code `shouldBe` ExitSuccess
         mapM_
           (doesFileExist >=> (`shouldBe` True))
           [ dir </> "out" </> "node-a.conf",
@@ -135,21 +140,23 @@ spec = describe "WgForge.CLI" $ do
             dir </> "keys" </> "node-a.key"
           ]
 
-  describe "validate (integration)" $
+  describe "validate (integration)" $ do
     it "accumulates a duplicate peer name with other validation errors" $
       withSystemTempDirectory "wgf-cli" $ \dir -> do
         let specPath = dir </> "network.yaml"
         BS.writeFile specPath dupSpec
 
-        r <- dispatch (Validate specPath)
-        case r of
-          Left (AppValidation es) -> do
-            let errs = toList es
-            errs `shouldContain` [DuplicatePeerName (PeerName "alice")]
-            errs `shouldContain` [IslandPeer (PeerName "carol")]
-          _ -> expectationFailure "expected AppValidation with accumulated errors"
+        (code, err) <- runCli ["validate", specPath]
+        code `shouldBe` ExitFailure 2 -- spec validation error
+        err `shouldSatisfy` ("alice" `isInfixOf`) -- the duplicate peer
+        err `shouldSatisfy` ("carol" `isInfixOf`) -- the island peer
+    it "exits 1 on a usage error (missing spec argument)" $ do
+      (code, _) <- runCli ["validate"]
+      code `shouldBe` ExitFailure 1
+
+    it "exits 3 when the spec file does not exist" $ do
+      (code, _) <- runCli ["validate", "/no/such/spec.yaml"]
+      code `shouldBe` ExitFailure 3
  where
   isNothingCmd Nothing = True
   isNothingCmd _ = False
-  isRightUnit (Right ()) = True
-  isRightUnit _ = False
