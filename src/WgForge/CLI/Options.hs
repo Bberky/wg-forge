@@ -12,7 +12,10 @@ module WgForge.CLI.Options (
   parsePrefs,
 ) where
 
+import Data.Version (showVersion)
 import Options.Applicative
+
+import Paths_wg_forge (version)
 
 -- | The top-level options data type, representing the command and its associated options.
 newtype Options = Options
@@ -145,11 +148,21 @@ programOpts =
 parsePrefs :: ParserPrefs
 parsePrefs = prefs showHelpOnEmpty
 
--- | The top-level parser, including @--help@.
+versionOption :: Parser (a -> a)
+versionOption =
+  infoOption
+    ("wg-forge " <> showVersion version)
+    ( long "version"
+        <> short 'V'
+        <> help "Show version information"
+        <> hidden
+    )
+
+-- | The top-level parser, including @--help@ and @--version@.
 parseOpts :: ParserInfo Options
 parseOpts =
   info
-    (helper <*> programOpts)
+    (helper <*> versionOption <*> programOpts)
     ( fullDesc
         <> header "wg-forge: a WireGuard© configuration generator"
         <> progDesc
