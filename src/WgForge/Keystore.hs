@@ -1,3 +1,4 @@
+-- | This module provides functions for managing a keystore of private keys for peers.
 module WgForge.Keystore (
   ensureKeystoreDir,
   generatePrivateKey,
@@ -10,11 +11,13 @@ module WgForge.Keystore (
 
 import Control.Exception (IOException, try)
 import qualified Crypto.PubKey.Curve25519 as Curve25519
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as C8
+import qualified Data.ByteString.Char8 as BS8
 import Data.Char (isSpace)
+import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Text (unpack)
+import qualified Data.Text as T
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.IO (hClose)
@@ -28,9 +31,9 @@ import System.Posix.IO (
   openFd,
  )
 
-import WgForge.Error (KeystoreError (KeyIoError, MalformedKey))
-import WgForge.Key (PrivateKey (PrivateKey), decodePrivateKey, encodePrivateKey)
-import WgForge.Spec (PeerName (..))
+import WgForge.Error
+import WgForge.Key
+import WgForge.Spec
 
 -- | Ensure the keystore directory exists with mode @0700@.
 -- Sets the mode explicitly after creation to avoid the umask window.
@@ -45,15 +48,12 @@ generatePrivateKey :: IO PrivateKey
 generatePrivateKey = PrivateKey <$> Curve25519.generateSecretKey
 
 -- | Load a private key for a peer.
---
--- A missing file yields @Right Nothing@ (no key yet); other IO failures yield
--- @Left KeyIoError@; a file that exists but does not decode yields
--- @Left MalformedKey@. Surrounding whitespace is trimmed before decoding, so
--- files produced by @wg genkey@ (trailing newline) load cleanly.
+-- Returns 'Right Nothing' if the key file does not exist,
+-- 'Right (Just pk)' on success, and 'Left err' on IO or parsing errors.
 loadKey :: FilePath -> PeerName -> IO (Either KeystoreError (Maybe PrivateKey))
 loadKey dir peerName = do
   let path = keyPath dir peerName
-  result <- try (BS.readFile path) :: IO (Either IOException BS.ByteString)
+  result <- try (BS.readFile path) :: IO (Either IOException ByteString)
   case result of
     Left e
       | isDoesNotExistError e -> return $ Right Nothing
@@ -63,7 +63,7 @@ loadKey dir peerName = do
         Left err -> return $ Left (MalformedKey path err)
         Right pk -> return $ Right (Just pk)
  where
-  trim = fst . C8.spanEnd isSpace . C8.dropWhile isSpace
+  trim = fst . BS8.spanEnd isSpace . BS8.dropWhile isSpace
 
 -- | Write a private key to @path@ with mode @0600@, never overwriting an
 -- existing file (@O_CREAT | O_EXCL@). The payload is base64 plus a single
@@ -76,7 +76,7 @@ writeKey path pk = do
   go = do
     fd <- openFd path WriteOnly defaultFileFlags{creat = Just 0o600, exclusive = True}
     handle <- fdToHandle fd
-    BS.hPut handle (encodePrivateKey pk <> C8.singleton '\n')
+    BS.hPut handle (encodePrivateKey pk <> BS8.singleton '\n')
     hClose handle
 
 -- | Ensure a private key exists for a peer, generating and persisting one if
@@ -95,7 +95,8 @@ ensureKey dir peerName = do
 
 -- | Ensure private keys exist for the given peers, creating any that are
 -- missing. Returns the first error encountered, or the full key map on success.
-ensureKeys :: FilePath -> [PeerName] -> IO (Either KeystoreError (Map.Map PeerName PrivateKey))
+-- Keystore directory is created if it does not exist.
+ensureKeys :: FilePath -> [PeerName] -> IO (Either KeystoreError (Map PeerName PrivateKey))
 ensureKeys dir peerNames = do
   ensureKeystoreDir dir
   results <- mapM (ensureKey dir) peerNames
@@ -103,4 +104,4 @@ ensureKeys dir peerNames = do
 
 -- | Get the path to a peer's key file in the keystore directory.
 keyPath :: FilePath -> PeerName -> FilePath
-keyPath dir (PeerName name) = dir </> (unpack name ++ ".key")
+keyPath dir (PeerName pn) = dir </> (T.unpack pn ++ ".key")

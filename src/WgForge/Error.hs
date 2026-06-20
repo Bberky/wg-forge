@@ -1,3 +1,4 @@
+-- | This module defines error types used throughout the WgForge application.
 module WgForge.Error (SpecError (..), ValidationError (..), KeystoreError (..), FileError (..)) where
 
 import Data.IP (IPv4)

@@ -10,10 +10,10 @@ import qualified Data.Text as T
 import Test.Hspec
 import Test.QuickCheck
 
-import Spec.Fixtures
+import Spec.Fixtures (AllocCase (..), alice, bob, carol, mkPeer, mkPeerAddr)
 import WgForge.Allocator (allocate)
 import WgForge.Cidr (broadcastAddress, networkAddress)
-import WgForge.Spec
+import WgForge.Spec (PeerName (..), PeerSpec (..))
 
 spec :: Spec
 spec = describe "WgForge.Allocator.allocate" $ do

@@ -1,24 +1,16 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
 
--- | Everything wg-forge writes to disk, kept out of the CLI orchestration: the
---   idempotent per-peer config writes for @generate@ and the project scaffold
---   for @init@. This is the IO counterpart to the pure "WgForge.Renderer",
---   mirroring "WgForge.Keystore" — the CLI decides what to do, the mechanics
---   live here. Failures surface as 'FileError'.
+-- | This module provides functions for writing WireGuard configuration files to disk,
+--   as well as scaffolding a new project directory. It includes functionality for idempotent
+--   writes (only writing when the content has changed) and reading existing configurations
+--   back into memory for comparison. All IO operations are wrapped to surface errors as 'FileError'.
 module WgForge.Output (
-  -- * generate
   WriteStat (..),
   writeConfigs,
   summarizeWrites,
-
-  -- * diff
   readConfigs,
-
-  -- * init
   scaffold,
-
-  -- * qr
   writeQrPng,
 ) where
 
@@ -28,8 +20,10 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.FileEmbed (embedFile)
+import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Text (Text, pack, unpack)
+import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Text.IO as TIO
 import System.Directory (
@@ -42,11 +36,11 @@ import System.Directory (
 import System.FilePath (dropExtension, takeExtension, (</>))
 import System.IO (hClose, openTempFile)
 
-import WgForge.Compiler (CompiledPeer)
-import WgForge.Error (FileError (FileError))
-import WgForge.Keystore (ensureKeystoreDir)
-import WgForge.Renderer (renderConfig)
-import WgForge.Spec (PeerName (..))
+import WgForge.Compiler
+import WgForge.Error
+import WgForge.Keystore
+import WgForge.Renderer
+import WgForge.Spec
 
 -- | Outcome of writing a single config file.
 data WriteStat = Written | Unchanged
@@ -55,7 +49,7 @@ data WriteStat = Written | Unchanged
 -- | Render and write every peer's config into @dir@, creating the directory
 --   first. Writes are idempotent (see 'writeConfigIfChanged'); the traversal
 --   stops at the first IO failure.
-writeConfigs :: FilePath -> Map.Map PeerName CompiledPeer -> IO (Either FileError [WriteStat])
+writeConfigs :: FilePath -> Map PeerName CompiledPeer -> IO (Either FileError [WriteStat])
 writeConfigs dir compiled =
   ensureDir dir >>= \case
     Left err -> pure (Left err)
@@ -79,8 +73,8 @@ summarizeWrites stats =
 -- | Write a peer's config idempotently: skip when the on-disk bytes already
 --   match, otherwise write to a temp file and atomically rename it into place.
 writeConfigIfChanged :: FilePath -> (PeerName, CompiledPeer) -> IO (Either FileError WriteStat)
-writeConfigIfChanged dir (pn@(PeerName name), cp) = do
-  let target = dir </> (unpack name ++ ".conf")
+writeConfigIfChanged dir (pn@(PeerName pnText), cp) = do
+  let target = dir </> (T.unpack pnText ++ ".conf")
       bytes = encodeUtf8 (renderConfig pn cp)
   result <- try (go target bytes) :: IO (Either IOException WriteStat)
   pure (first (FileError target . show) result)
@@ -91,7 +85,7 @@ writeConfigIfChanged dir (pn@(PeerName name), cp) = do
     if same
       then pure Unchanged
       else do
-        (tmp, h) <- openTempFile dir (unpack name ++ ".conf.tmp")
+        (tmp, h) <- openTempFile dir (T.unpack pnText ++ ".conf.tmp")
         BS.hPut h bytes
         hClose h
         renameFile tmp target
@@ -101,16 +95,16 @@ writeConfigIfChanged dir (pn@(PeerName name), cp) = do
 --   for @diff@ to compare against the spec. A non-existent directory yields an
 --   empty map (a never-generated project, where every peer is \"added\"); any IO
 --   failure surfaces as a 'FileError'.
-readConfigs :: FilePath -> IO (Either FileError (Map.Map PeerName Text))
+readConfigs :: FilePath -> IO (Either FileError (Map PeerName Text))
 readConfigs dir = do
-  first (FileError dir . show) <$> (try go :: IO (Either IOException (Map.Map PeerName Text)))
+  first (FileError dir . show) <$> (try go :: IO (Either IOException (Map PeerName Text)))
  where
   go = do
     names <- listDirectory dir
     Map.fromList <$> mapM readOne (filter ((== ".conf") . takeExtension) names)
   readOne name = do
     text <- TIO.readFile (dir </> name)
-    pure (PeerName (pack (dropExtension name)), text)
+    pure (PeerName (T.pack (dropExtension name)), text)
 
 -- | Scaffold a project at @path@: a starter @network.yaml@, an @out/@
 --   directory, and a @0700@ @keys/@ keystore. Refuses an existing non-empty

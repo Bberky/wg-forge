@@ -53,11 +53,16 @@ ghc-options:
   - -Wpartial-fields
   - -Wredundant-constraints
 
+default-extensions:
+  - OverloadedStrings
+  - OverloadedRecordDot
+  - DuplicateRecordFields
+
 library:
   source-dirs: src
 
 executables:
-  wg-forge-exe:
+  wg-forge:
     main: Main.hs
     source-dirs: app
     ghc-options:

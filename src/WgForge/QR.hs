@@ -1,5 +1,6 @@
-{-# LANGUAGE OverloadedStrings #-}
-
+-- | This module provides functionality for generating and rendering QR codes
+--   from WireGuard peer configuration files. It includes functions to encode text into QR codes,
+--   render QR codes for terminal display, and save QR codes as PNG images.
 module WgForge.QR (
   encodeToQr,
   renderQrToAnsii,

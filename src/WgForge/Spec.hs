@@ -2,6 +2,9 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
+-- | This module defines the data structures representing the network specification
+--   and its components, such as peers, segments, and allowed IPs. It also
+--   provides instances for JSON parsing, enabling the conversion from YAML to Haskell data types.
 module WgForge.Spec (
   Network (..),
   NetworkSpec (..),

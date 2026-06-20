@@ -2,181 +2,175 @@
 
 module Spec.ValidatorSpec (spec) where
 
-import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.Map.Strict as Map
 import Test.Hspec
-import Validation (Validation (..))
+import Validation (Validation (Success))
 
-import Spec.Fixtures
-import WgForge.Error
-import WgForge.Spec
-import WgForge.Spec.Validator.Internal
+import Spec.Fixtures (
+  alice,
+  bob,
+  carol,
+  dave,
+  failureErrors,
+  mkAddrNetwork,
+  mkNetwork,
+  mkPeer,
+  mkPeerAddr,
+  sampleCidr,
+  sampleEndpoint,
+  sampleNetSpec,
+  sn,
+  sn2,
+ )
+import WgForge.Error (ValidationError (..))
+import WgForge.Spec (AllowedIpsMode (..), Network (..), SegmentSpec (..))
+import WgForge.Spec.Validator (validateNetwork)
 
+-- | The public validator runs and accumulates every rule at once, so per-rule
+--   tests build a network that triggers the rule under test and then inspect the
+--   accumulated errors filtered down to the relevant constructor. Acceptance
+--   tests either assert full 'Success' (when the network is otherwise valid) or
+--   that the rule's constructor is absent from the accumulated errors.
 spec :: Spec
-spec = do
-  describe "validateSegmentSpec" $ do
-    describe "FullMesh" $ do
-      it "rejects empty peer list" $
-        validateSegmentSpec sn (FullMesh [])
-          `shouldBe` Failure (InsufficientPeers sn "requires at least 2 peers" :| [])
-      it "rejects a single peer" $
-        validateSegmentSpec sn (FullMesh [alice])
-          `shouldBe` Failure (InsufficientPeers sn "requires at least 2 peers" :| [])
-      it "accepts two peers" $ do
-        let seg = FullMesh [alice, bob]
-        validateSegmentSpec sn seg `shouldBe` Success seg
-
-    describe "HubSpoke" $ do
-      it "rejects empty hub list" $
-        validateSegmentSpec sn (HubSpoke [] [alice] Peers)
-          `shouldBe` Failure (InsufficientPeers sn "requires at least 1 hub" :| [])
-      it "rejects empty spoke list" $
-        -- regression: old code required >= 2 spokes; one spoke must now be valid
-        validateSegmentSpec sn (HubSpoke [alice] [] Peers)
-          `shouldBe` Failure (InsufficientPeers sn "requires at least 1 spoke" :| [])
-      it "accepts 1 hub and 1 spoke" $ do
-        let seg = HubSpoke [alice] [bob] Peers
-        validateSegmentSpec sn seg `shouldBe` Success seg
-      it "accepts multiple hubs and spokes" $ do
-        let seg = HubSpoke [alice, bob] [carol, dave] Peers
-        validateSegmentSpec sn seg `shouldBe` Success seg
-      it "rejects a peer in both hub and spoke roles" $
-        validateSegmentSpec sn (HubSpoke [alice] [alice] Peers)
-          `shouldBe` Failure (PeerBothRoles sn alice :| [])
-      it "accumulates errors for multiple role conflicts" $ do
-        let result = validateSegmentSpec sn (HubSpoke [alice, bob] [alice, bob] Peers)
-        failureErrors result
-          `shouldMatchList` [PeerBothRoles sn alice, PeerBothRoles sn bob]
-      it "accumulates both a count error and a role-conflict error" $ do
-        -- no hubs, bob appears in both lists
-        let result = validateSegmentSpec sn (HubSpoke [] [bob] Peers)
-        -- InsufficientPeers (no hubs); no role conflict since hubs list is empty
-        failureErrors result
-          `shouldMatchList` [InsufficientPeers sn "requires at least 1 hub"]
-
-    describe "Relay" $ do
-      it "rejects empty relay list" $
-        validateSegmentSpec sn (Relay [] [alice] Peers)
-          `shouldBe` Failure (InsufficientPeers sn "requires at least 1 relay" :| [])
-      it "rejects empty client list" $
-        -- regression: old code required >= 2 clients; one client must now be valid
-        validateSegmentSpec sn (Relay [alice] [] Peers)
-          `shouldBe` Failure (InsufficientPeers sn "requires at least 1 client" :| [])
-      it "accepts 1 relay and 1 client" $ do
-        let seg = Relay [alice] [bob] Peers
-        validateSegmentSpec sn seg `shouldBe` Success seg
-      it "rejects a peer in both relay and client roles" $
-        -- regression: old validateSegmentSpec never called validatePeerRoles for Relay
-        validateSegmentSpec sn (Relay [alice] [alice] Peers)
-          `shouldBe` Failure (PeerBothRoles sn alice :| [])
-      it "accumulates errors for multiple relay/client conflicts" $ do
-        let result = validateSegmentSpec sn (Relay [alice, bob] [alice, bob] Peers)
-        failureErrors result
-          `shouldMatchList` [PeerBothRoles sn alice, PeerBothRoles sn bob]
-
-  describe "validatePeerRoles" $ do
-    it "FullMesh always succeeds" $ do
-      let seg = FullMesh [alice, bob, carol]
-      validatePeerRoles sn seg `shouldBe` Success seg
-
-    describe "HubSpoke" $ do
-      it "succeeds with disjoint hubs and spokes" $ do
-        let seg = HubSpoke [alice, bob] [carol, dave] Peers
-        validatePeerRoles sn seg `shouldBe` Success seg
-      it "reports one conflict" $
-        validatePeerRoles sn (HubSpoke [alice, bob] [bob, carol] Peers)
-          `shouldBe` Failure (PeerBothRoles sn bob :| [])
-      it "reports multiple conflicts" $ do
-        let result = validatePeerRoles sn (HubSpoke [alice, bob] [alice, bob] Peers)
-        failureErrors result
-          `shouldMatchList` [PeerBothRoles sn alice, PeerBothRoles sn bob]
-
-    describe "Relay" $ do
-      it "succeeds with disjoint relays and clients" $ do
-        let seg = Relay [alice] [bob, carol] Peers
-        validatePeerRoles sn seg `shouldBe` Success seg
-      it "reports one conflict" $
-        validatePeerRoles sn (Relay [alice, bob] [bob, carol] Peers)
-          `shouldBe` Failure (PeerBothRoles sn bob :| [])
-      it "reports multiple conflicts" $ do
-        let result = validatePeerRoles sn (Relay [alice, bob] [alice, bob] Peers)
-        failureErrors result
-          `shouldMatchList` [PeerBothRoles sn alice, PeerBothRoles sn bob]
-
-  describe "validateEndpoints" $ do
-    it "reports MissingEndpoint for hub without endpoint" $ do
+spec = describe "WgForge.Spec.Validator.validateNetwork" $ do
+  describe "segment peer counts (InsufficientPeers)" $ do
+    it "rejects a full-mesh with no peers" $
+      insufficient (mkNetwork [] [(sn, FullMesh [])])
+        `shouldMatchList` [InsufficientPeers sn "requires at least 2 peers"]
+    it "rejects a full-mesh with a single peer" $
+      insufficient (mkNetwork [(alice, mkPeer Nothing)] [(sn, FullMesh [alice])])
+        `shouldMatchList` [InsufficientPeers sn "requires at least 2 peers"]
+    it "accepts a full-mesh with two peers" $ do
       let net =
             mkNetwork
-              [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
+              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
+              [(sn, FullMesh [alice, bob])]
+      validateNetwork net `shouldBe` Success net
+
+    it "rejects a hub-and-spoke with no hubs" $
+      insufficient (mkNetwork [(alice, mkPeer Nothing)] [(sn, HubSpoke [] [alice] Peers)])
+        `shouldMatchList` [InsufficientPeers sn "requires at least 1 hub"]
+    it "rejects a hub-and-spoke with no spokes" $
+      insufficient (mkNetwork [(alice, mkPeer (Just sampleEndpoint))] [(sn, HubSpoke [alice] [] Peers)])
+        `shouldMatchList` [InsufficientPeers sn "requires at least 1 spoke"]
+    it "accepts a hub-and-spoke with one hub and one spoke" $ do
+      let net =
+            mkNetwork
+              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
               [(sn, HubSpoke [alice] [bob] Peers)]
-      failureErrors (validateEndpoints net) `shouldMatchList` [MissingEndpoint alice]
+      validateNetwork net `shouldBe` Success net
 
-    it "reports MissingEndpoint for relay without endpoint" $ do
+    it "rejects a relay with no relays" $
+      insufficient (mkNetwork [(alice, mkPeer Nothing)] [(sn, Relay [] [alice] Peers)])
+        `shouldMatchList` [InsufficientPeers sn "requires at least 1 relay"]
+    it "rejects a relay with no clients" $
+      insufficient (mkNetwork [(alice, mkPeer (Just sampleEndpoint))] [(sn, Relay [alice] [] Peers)])
+        `shouldMatchList` [InsufficientPeers sn "requires at least 1 client"]
+    it "accepts a relay with one relay and one client" $ do
       let net =
             mkNetwork
-              [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
+              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
               [(sn, Relay [alice] [bob] Peers)]
-      failureErrors (validateEndpoints net) `shouldMatchList` [MissingEndpoint alice]
+      validateNetwork net `shouldBe` Success net
 
-    it "succeeds when hub has an endpoint" $ do
+  describe "role conflicts (PeerBothRoles)" $ do
+    it "rejects a peer that is both hub and spoke" $
+      roleConflicts
+        (mkNetwork [(alice, mkPeer (Just sampleEndpoint))] [(sn, HubSpoke [alice] [alice] Peers)])
+        `shouldMatchList` [PeerBothRoles sn alice]
+    it "rejects a peer that is both relay and client" $
+      roleConflicts
+        (mkNetwork [(alice, mkPeer (Just sampleEndpoint))] [(sn, Relay [alice] [alice] Peers)])
+        `shouldMatchList` [PeerBothRoles sn alice]
+    it "accumulates a conflict for every dual-role peer in a hub-and-spoke" $
+      roleConflicts
+        ( mkNetwork
+            [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer (Just sampleEndpoint))]
+            [(sn, HubSpoke [alice, bob] [alice, bob] Peers)]
+        )
+        `shouldMatchList` [PeerBothRoles sn alice, PeerBothRoles sn bob]
+    it "accumulates a conflict for every dual-role peer in a relay" $
+      roleConflicts
+        ( mkNetwork
+            [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer (Just sampleEndpoint))]
+            [(sn, Relay [alice, bob] [alice, bob] Peers)]
+        )
+        `shouldMatchList` [PeerBothRoles sn alice, PeerBothRoles sn bob]
+    it "accepts disjoint hub and spoke roles" $
+      roleConflicts
+        ( mkNetwork
+            [ (alice, mkPeer (Just sampleEndpoint)),
+              (bob, mkPeer (Just sampleEndpoint)),
+              (carol, mkPeer Nothing),
+              (dave, mkPeer Nothing)
+            ]
+            [(sn, HubSpoke [alice, bob] [carol, dave] Peers)]
+        )
+        `shouldBe` []
+
+  describe "endpoint requirements (MissingEndpoint)" $ do
+    it "requires an endpoint on a hub" $
+      missingEndpoints
+        ( mkNetwork
+            [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
+            [(sn, HubSpoke [alice] [bob] Peers)]
+        )
+        `shouldMatchList` [MissingEndpoint alice]
+    it "requires an endpoint on a relay" $
+      missingEndpoints
+        ( mkNetwork
+            [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
+            [(sn, Relay [alice] [bob] Peers)]
+        )
+        `shouldMatchList` [MissingEndpoint alice]
+    it "accepts a hub that has an endpoint" $ do
       let net =
             mkNetwork
               [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
               [(sn, HubSpoke [alice] [bob] Peers)]
-      validateEndpoints net `shouldBe` Success net
-
-    it "accumulates errors for multiple hubs missing endpoints" $ do
-      let net =
-            mkNetwork
-              [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
-              [(sn, HubSpoke [alice, bob] [carol] Peers)]
-      failureErrors (validateEndpoints net)
+      validateNetwork net `shouldBe` Success net
+    it "accumulates a missing endpoint for every hub lacking one" $
+      missingEndpoints
+        ( mkNetwork
+            [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
+            [(sn, HubSpoke [alice, bob] [carol] Peers)]
+        )
         `shouldMatchList` [MissingEndpoint alice, MissingEndpoint bob]
+    it "reports a hub missing an endpoint across two segments only once" $
+      missingEndpoints
+        ( mkNetwork
+            [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
+            [(sn, HubSpoke [alice] [bob] Peers), (sn2, HubSpoke [alice] [carol] Peers)]
+        )
+        `shouldMatchList` [MissingEndpoint alice]
 
-    it "deduplicates: same hub missing endpoint in two segments reports once" $ do
-      let net =
-            mkNetwork
-              [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
-              [ (sn, HubSpoke [alice] [bob] Peers),
-                (sn2, HubSpoke [alice] [carol] Peers)
-              ]
-      failureErrors (validateEndpoints net) `shouldMatchList` [MissingEndpoint alice]
-
-  describe "validateNatPairs" $ do
-    it "reports NatPairInMesh when both peers in a FullMesh lack endpoint" $ do
-      let net =
-            mkNetwork
-              [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
-              [(sn, FullMesh [alice, bob])]
-      failureErrors (validateNatPairs net)
+  describe "NAT pairing (NatPairInMesh)" $ do
+    it "rejects a full-mesh pair where both peers lack an endpoint" $
+      natPairs (mkNetwork [(alice, mkPeer Nothing), (bob, mkPeer Nothing)] [(sn, FullMesh [alice, bob])])
         `shouldMatchList` [NatPairInMesh sn alice bob]
-
-    it "succeeds when one peer in a FullMesh pair has an endpoint" $ do
+    it "accepts a full-mesh pair when one peer has an endpoint" $ do
       let net =
             mkNetwork
               [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
               [(sn, FullMesh [alice, bob])]
-      validateNatPairs net `shouldBe` Success net
-
-    it "reports all three pairs when three FullMesh peers all lack endpoints" $ do
-      let net =
-            mkNetwork
-              [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
-              [(sn, FullMesh [alice, bob, carol])]
-      failureErrors (validateNatPairs net)
+      validateNetwork net `shouldBe` Success net
+    it "reports every endpoint-less full-mesh pair" $
+      natPairs
+        ( mkNetwork
+            [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
+            [(sn, FullMesh [alice, bob, carol])]
+        )
         `shouldMatchList` [ NatPairInMesh sn alice bob,
                             NatPairInMesh sn alice carol,
                             NatPairInMesh sn bob carol
                           ]
-
-    it "succeeds for HubSpoke when hub has an endpoint (spoke may lack one)" $ do
+    it "accepts hub-and-spoke when the hub has an endpoint" $ do
       let net =
             mkNetwork
               [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
               [(sn, HubSpoke [alice] [bob] Peers)]
-      validateNatPairs net `shouldBe` Success net
-
-    it "succeeds for two hubs both with endpoints (hub-hub edge is covered)" $ do
+      validateNetwork net `shouldBe` Success net
+    it "accepts two hubs that both have endpoints" $ do
       let net =
             mkNetwork
               [ (alice, mkPeer (Just sampleEndpoint)),
@@ -184,263 +178,169 @@ spec = do
                 (carol, mkPeer Nothing)
               ]
               [(sn, HubSpoke [alice, bob] [carol] Peers)]
-      validateNatPairs net `shouldBe` Success net
-
-    it "reports two errors for the same bad pair appearing in two segments" $ do
-      let net =
-            mkNetwork
-              [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
-              [ (sn, FullMesh [alice, bob]),
-                (sn2, FullMesh [alice, bob])
-              ]
-      failureErrors (validateNatPairs net)
+      validateNetwork net `shouldBe` Success net
+    it "reports the same bad pair separately in each segment" $
+      natPairs
+        ( mkNetwork
+            [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
+            [(sn, FullMesh [alice, bob]), (sn2, FullMesh [alice, bob])]
+        )
         `shouldMatchList` [NatPairInMesh sn alice bob, NatPairInMesh sn2 alice bob]
 
-  describe "validateReachability" $ do
-    -- Success: each role position counts as reachable
-    it "succeeds for a FullMesh member" $ do
-      let net = mkNetwork [(alice, mkPeer Nothing), (bob, mkPeer Nothing)] [(sn, FullMesh [alice, bob])]
-      validateReachability net `shouldBe` Success net
-
-    it "succeeds for a HubSpoke hub" $ do
-      let net =
-            mkNetwork
-              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
-              [(sn, HubSpoke [alice] [bob] Peers)]
-      validateReachability net `shouldBe` Success net
-
-    it "succeeds for a HubSpoke spoke" $ do
-      let net =
-            mkNetwork
-              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
-              [(sn, HubSpoke [alice] [bob] Peers)]
-      validateReachability net `shouldBe` Success net
-
-    it "succeeds for a Relay relay" $ do
-      let net =
-            mkNetwork
-              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
-              [(sn, Relay [alice] [bob] Peers)]
-      validateReachability net `shouldBe` Success net
-
-    it "succeeds for a Relay client" $ do
-      let net =
-            mkNetwork
-              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
-              [(sn, Relay [alice] [bob] Peers)]
-      validateReachability net `shouldBe` Success net
-
-    it "succeeds when a peer is referenced in multiple segments" $ do
-      let net =
-            mkNetwork
-              [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
-              [(sn, HubSpoke [alice] [bob] Peers), (sn2, HubSpoke [alice] [carol] Peers)]
-      validateReachability net `shouldBe` Success net
-
-    -- Failure: IslandPeer emitted correctly
-    it "reports IslandPeer for a peer in no segment" $ do
-      let net = mkNetwork [(alice, mkPeer Nothing)] []
-      failureErrors (validateReachability net) `shouldMatchList` [IslandPeer alice]
-
-    it "reports IslandPeer only for the unreferenced peer" $ do
-      let net =
-            mkNetwork
-              [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
-              [(sn, FullMesh [alice, bob])]
-      failureErrors (validateReachability net) `shouldMatchList` [IslandPeer carol]
-
-    it "accumulates IslandPeer for all peers when no segments exist" $ do
-      let net =
-            mkNetwork
-              [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
-              []
-      failureErrors (validateReachability net)
+  describe "reachability (IslandPeer)" $ do
+    it "reports a peer that appears in no segment" $
+      islands (mkNetwork [(alice, mkPeer Nothing)] [])
+        `shouldMatchList` [IslandPeer alice]
+    it "reports only the unreferenced peer" $
+      islands
+        ( mkNetwork
+            [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
+            [(sn, FullMesh [alice, bob])]
+        )
+        `shouldMatchList` [IslandPeer carol]
+    it "reports every peer when there are no segments" $
+      islands
+        ( mkNetwork
+            [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
+            []
+        )
         `shouldMatchList` [IslandPeer alice, IslandPeer bob, IslandPeer carol]
+    it "reports an island even when it has an endpoint" $
+      islands (mkNetwork [(alice, mkPeer (Just sampleEndpoint))] [])
+        `shouldMatchList` [IslandPeer alice]
+    it "does not flag a name that appears only in a segment, not the peer map" $
+      islands (mkNetwork [(alice, mkPeer Nothing)] [(sn, FullMesh [alice, dave])])
+        `shouldBe` []
 
-    -- Regression: no endpoint exemption
-    it "reports IslandPeer even when the peer has an endpoint" $ do
-      let net = mkNetwork [(alice, mkPeer (Just sampleEndpoint))] []
-      failureErrors (validateReachability net) `shouldMatchList` [IslandPeer alice]
-
-    -- Regression: segment-only names (future UnknownPeerRef) are not flagged
-    it "does not report IslandPeer for a name that appears only in a segment but not in specPeers" $ do
-      -- dave is referenced in the segment but not in specPeers; alice is in specPeers and the segment
-      let net =
-            mkNetwork
-              [(alice, mkPeer Nothing)]
-              [(sn, FullMesh [alice, dave])]
-      validateReachability net `shouldBe` Success net
-
-  describe "validateAddressesInCidr" $ do
-    it "accepts an explicit address inside the CIDR" $ do
-      let net = mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "10.0.0.5")))]
-      validateAddressesInCidr net `shouldBe` Success net
-
-    it "reports AddressOutOfCidr for an address outside the CIDR" $ do
-      let net = mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "192.168.1.5")))]
-      failureErrors (validateAddressesInCidr net)
+  describe "addresses in CIDR (AddressOutOfCidr)" $ do
+    it "accepts an explicit address inside the CIDR" $
+      outOfCidr (mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "10.0.0.5")))])
+        `shouldBe` []
+    it "rejects an explicit address outside the CIDR" $
+      outOfCidr (mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "192.168.1.5")))])
         `shouldMatchList` [AddressOutOfCidr alice (read "192.168.1.5")]
-
-    it "ignores peers without an explicit address" $ do
-      let net = mkAddrNetwork sampleCidr [(alice, mkPeerAddr Nothing)]
-      validateAddressesInCidr net `shouldBe` Success net
-
-    it "accumulates errors for multiple out-of-cidr addresses" $ do
-      let net =
-            mkAddrNetwork
-              sampleCidr
-              [ (alice, mkPeerAddr (Just (read "192.168.1.5"))),
-                (bob, mkPeerAddr (Just (read "10.1.0.1")))
-              ]
-      failureErrors (validateAddressesInCidr net)
+    it "ignores peers without an explicit address" $
+      outOfCidr (mkAddrNetwork sampleCidr [(alice, mkPeerAddr Nothing)])
+        `shouldBe` []
+    it "accumulates every out-of-CIDR address" $
+      outOfCidr
+        ( mkAddrNetwork
+            sampleCidr
+            [ (alice, mkPeerAddr (Just (read "192.168.1.5"))),
+              (bob, mkPeerAddr (Just (read "10.1.0.1")))
+            ]
+        )
         `shouldMatchList` [ AddressOutOfCidr alice (read "192.168.1.5"),
                             AddressOutOfCidr bob (read "10.1.0.1")
                           ]
 
-  describe "validateReservedAddresses" $ do
-    it "reports AddressIsReserved for the network address" $ do
-      let net = mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "10.0.0.0")))]
-      failureErrors (validateReservedAddresses net)
+  describe "reserved addresses (AddressIsReserved)" $ do
+    it "rejects the network address" $
+      reserved (mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "10.0.0.0")))])
         `shouldMatchList` [AddressIsReserved alice (read "10.0.0.0")]
-
-    it "reports AddressIsReserved for the broadcast address" $ do
-      let net = mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "10.0.0.255")))]
-      failureErrors (validateReservedAddresses net)
+    it "rejects the broadcast address" $
+      reserved (mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "10.0.0.255")))])
         `shouldMatchList` [AddressIsReserved alice (read "10.0.0.255")]
+    it "accepts an ordinary host address" $
+      reserved (mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "10.0.0.1")))])
+        `shouldBe` []
+    it "treats both addresses of a /31 as usable" $
+      reserved
+        ( mkAddrNetwork
+            (read "10.0.0.0/31")
+            [(alice, mkPeerAddr (Just (read "10.0.0.0"))), (bob, mkPeerAddr (Just (read "10.0.0.1")))]
+        )
+        `shouldBe` []
+    it "treats the single address of a /32 as usable" $
+      reserved (mkAddrNetwork (read "10.0.0.7/32") [(alice, mkPeerAddr (Just (read "10.0.0.7")))])
+        `shouldBe` []
 
-    it "accepts an ordinary host address" $ do
-      let net = mkAddrNetwork sampleCidr [(alice, mkPeerAddr (Just (read "10.0.0.1")))]
-      validateReservedAddresses net `shouldBe` Success net
-
-    it "accepts both addresses of a /31 (no reservations)" $ do
-      let net =
-            mkAddrNetwork
-              (read "10.0.0.0/31")
-              [ (alice, mkPeerAddr (Just (read "10.0.0.0"))),
-                (bob, mkPeerAddr (Just (read "10.0.0.1")))
-              ]
-      validateReservedAddresses net `shouldBe` Success net
-
-    it "accepts the single address of a /32 (no reservations)" $ do
-      let net = mkAddrNetwork (read "10.0.0.7/32") [(alice, mkPeerAddr (Just (read "10.0.0.7")))]
-      validateReservedAddresses net `shouldBe` Success net
-
-  describe "validateAddressCollisions" $ do
-    it "accepts distinct explicit addresses" $ do
-      let net =
-            mkAddrNetwork
-              sampleCidr
-              [ (alice, mkPeerAddr (Just (read "10.0.0.1"))),
-                (bob, mkPeerAddr (Just (read "10.0.0.2")))
-              ]
-      validateAddressCollisions net `shouldBe` Success net
-
-    it "ignores peers without an explicit address" $ do
-      let net =
-            mkAddrNetwork
-              sampleCidr
-              [(alice, mkPeerAddr Nothing), (bob, mkPeerAddr Nothing)]
-      validateAddressCollisions net `shouldBe` Success net
-
-    it "reports AddressCollision for two peers sharing an address" $ do
-      let net =
-            mkAddrNetwork
-              sampleCidr
-              [ (alice, mkPeerAddr (Just (read "10.0.0.1"))),
-                (bob, mkPeerAddr (Just (read "10.0.0.1")))
-              ]
-      failureErrors (validateAddressCollisions net)
+  describe "address collisions (AddressCollision)" $ do
+    it "accepts distinct explicit addresses" $
+      collisions
+        ( mkAddrNetwork
+            sampleCidr
+            [(alice, mkPeerAddr (Just (read "10.0.0.1"))), (bob, mkPeerAddr (Just (read "10.0.0.2")))]
+        )
+        `shouldBe` []
+    it "ignores peers without an explicit address" $
+      collisions (mkAddrNetwork sampleCidr [(alice, mkPeerAddr Nothing), (bob, mkPeerAddr Nothing)])
+        `shouldBe` []
+    it "rejects two peers sharing an address" $
+      collisions
+        ( mkAddrNetwork
+            sampleCidr
+            [(alice, mkPeerAddr (Just (read "10.0.0.1"))), (bob, mkPeerAddr (Just (read "10.0.0.1")))]
+        )
         `shouldMatchList` [AddressCollision alice bob (read "10.0.0.1")]
-
-    it "reports all pairs for three peers sharing an address" $ do
-      let net =
-            mkAddrNetwork
-              sampleCidr
-              [ (alice, mkPeerAddr (Just (read "10.0.0.1"))),
-                (bob, mkPeerAddr (Just (read "10.0.0.1"))),
-                (carol, mkPeerAddr (Just (read "10.0.0.1")))
-              ]
-      failureErrors (validateAddressCollisions net)
+    it "reports every colliding pair for three peers on one address" $
+      collisions
+        ( mkAddrNetwork
+            sampleCidr
+            [ (alice, mkPeerAddr (Just (read "10.0.0.1"))),
+              (bob, mkPeerAddr (Just (read "10.0.0.1"))),
+              (carol, mkPeerAddr (Just (read "10.0.0.1")))
+            ]
+        )
         `shouldMatchList` [ AddressCollision alice bob (read "10.0.0.1"),
                             AddressCollision alice carol (read "10.0.0.1"),
                             AddressCollision bob carol (read "10.0.0.1")
                           ]
-
-    it "reports collisions on two different addresses independently" $ do
-      let net =
-            mkAddrNetwork
-              sampleCidr
-              [ (alice, mkPeerAddr (Just (read "10.0.0.1"))),
-                (bob, mkPeerAddr (Just (read "10.0.0.1"))),
-                (carol, mkPeerAddr (Just (read "10.0.0.2"))),
-                (dave, mkPeerAddr (Just (read "10.0.0.2")))
-              ]
-      failureErrors (validateAddressCollisions net)
+    it "reports collisions on different addresses independently" $
+      collisions
+        ( mkAddrNetwork
+            sampleCidr
+            [ (alice, mkPeerAddr (Just (read "10.0.0.1"))),
+              (bob, mkPeerAddr (Just (read "10.0.0.1"))),
+              (carol, mkPeerAddr (Just (read "10.0.0.2"))),
+              (dave, mkPeerAddr (Just (read "10.0.0.2")))
+            ]
+        )
         `shouldMatchList` [ AddressCollision alice bob (read "10.0.0.1"),
                             AddressCollision carol dave (read "10.0.0.2")
                           ]
 
-  describe "validateCidrCapacity" $ do
-    it "reports CidrOverflow when peers exceed addressable hosts" $ do
-      let net =
-            mkAddrNetwork
-              (read "10.0.0.0/30") -- 2 usable hosts
-              [ (alice, mkPeerAddr Nothing),
-                (bob, mkPeerAddr Nothing),
-                (carol, mkPeerAddr Nothing)
-              ]
-      validateCidrCapacity net `shouldBe` Failure (CidrOverflow 3 2 :| [])
+  describe "CIDR capacity (CidrOverflow)" $ do
+    it "rejects more peers than addressable hosts" $
+      overflow
+        ( mkAddrNetwork
+            (read "10.0.0.0/30") -- 2 usable hosts
+            [(alice, mkPeerAddr Nothing), (bob, mkPeerAddr Nothing), (carol, mkPeerAddr Nothing)]
+        )
+        `shouldMatchList` [CidrOverflow 3 2]
+    it "accepts a peer count equal to the addressable hosts" $
+      overflow
+        (mkAddrNetwork (read "10.0.0.0/30") [(alice, mkPeerAddr Nothing), (bob, mkPeerAddr Nothing)])
+        `shouldBe` []
+    it "counts both addresses of a /31 as usable" $
+      overflow
+        (mkAddrNetwork (read "10.0.0.0/31") [(alice, mkPeerAddr Nothing), (bob, mkPeerAddr Nothing)])
+        `shouldBe` []
+    it "counts the single address of a /32 as usable" $
+      overflow (mkAddrNetwork (read "10.0.0.7/32") [(alice, mkPeerAddr Nothing)])
+        `shouldBe` []
+    it "rejects two peers in a /32" $
+      overflow
+        (mkAddrNetwork (read "10.0.0.7/32") [(alice, mkPeerAddr Nothing), (bob, mkPeerAddr Nothing)])
+        `shouldMatchList` [CidrOverflow 2 1]
 
-    it "accepts peer count equal to addressable hosts" $ do
-      let net =
-            mkAddrNetwork
-              (read "10.0.0.0/30")
-              [(alice, mkPeerAddr Nothing), (bob, mkPeerAddr Nothing)]
-      validateCidrCapacity net `shouldBe` Success net
+  describe "unknown peer references (UnknownPeerRef)" $ do
+    it "reports a segment peer that is not declared" $
+      unknownRefs
+        ( mkNetwork
+            [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
+            [(sn, FullMesh [alice, bob, dave])]
+        )
+        `shouldMatchList` [UnknownPeerRef sn dave]
+    it "accepts segments that reference only declared peers" $
+      unknownRefs
+        ( mkNetwork
+            [(alice, mkPeer (Just sampleEndpoint)), (bob, mkPeer Nothing)]
+            [(sn, FullMesh [alice, bob])]
+        )
+        `shouldBe` []
 
-    it "counts both addresses of a /31 as usable" $ do
-      let net =
-            mkAddrNetwork
-              (read "10.0.0.0/31")
-              [(alice, mkPeerAddr Nothing), (bob, mkPeerAddr Nothing)]
-      validateCidrCapacity net `shouldBe` Success net
-
-    it "counts the single address of a /32 as usable" $ do
-      let net = mkAddrNetwork (read "10.0.0.7/32") [(alice, mkPeerAddr Nothing)]
-      validateCidrCapacity net `shouldBe` Success net
-
-    it "reports CidrOverflow for two peers in a /32" $ do
-      let net =
-            mkAddrNetwork
-              (read "10.0.0.7/32")
-              [(alice, mkPeerAddr Nothing), (bob, mkPeerAddr Nothing)]
-      validateCidrCapacity net `shouldBe` Failure (CidrOverflow 2 1 :| [])
-
-  describe "validateAddressing" $ do
-    it "accepts a network with valid distinct addresses" $ do
-      let net =
-            mkAddrNetwork
-              sampleCidr
-              [ (alice, mkPeerAddr (Just (read "10.0.0.1"))),
-                (bob, mkPeerAddr Nothing)
-              ]
-      validateAddressing net `shouldBe` Success net
-
-    it "accumulates out-of-cidr, collision and overflow errors in one pass" $ do
-      let net =
-            mkAddrNetwork
-              (read "10.0.0.0/30") -- 2 usable hosts
-              [ (alice, mkPeerAddr (Just (read "192.168.0.1"))),
-                (bob, mkPeerAddr (Just (read "10.0.0.1"))),
-                (carol, mkPeerAddr (Just (read "10.0.0.1")))
-              ]
-      failureErrors (validateAddressing net)
-        `shouldMatchList` [ AddressOutOfCidr alice (read "192.168.0.1"),
-                            AddressCollision bob carol (read "10.0.0.1"),
-                            CidrOverflow 3 2
-                          ]
-
-  describe "validateNetwork" $ do
+  describe "cross-rule accumulation" $ do
     it "accumulates addressing errors alongside structural errors" $ do
       let net =
             Network
@@ -451,32 +351,48 @@ spec = do
                   ]
               )
               (Map.fromList [(sn, FullMesh [alice, bob]), (sn2, FullMesh [alice])])
-      let errs = failureErrors (validateNetwork net)
-      errs `shouldContain` [AddressOutOfCidr alice (read "192.168.1.5")]
-      errs `shouldContain` [InsufficientPeers sn2 "requires at least 2 peers"]
+      let es = failureErrors (validateNetwork net)
+      es `shouldContain` [AddressOutOfCidr alice (read "192.168.1.5")]
+      es `shouldContain` [InsufficientPeers sn2 "requires at least 2 peers"]
 
     it "accumulates structural and endpoint errors from a single pass" $ do
-      -- FullMesh with 1 peer (InsufficientPeers) and both peers lack endpoints
-      -- (NatPairInMesh only fires when there are >= 2 peers; use a 2-peer mesh
-      --  with an additional InsufficientPeers from a second segment)
       let net =
             mkNetwork
               [(alice, mkPeer Nothing), (bob, mkPeer Nothing)]
               [ (sn, FullMesh [alice, bob]), -- NatPairInMesh
                 (sn2, FullMesh [alice]) -- InsufficientPeers
               ]
-      let errs = failureErrors (validateNetwork net)
-      errs `shouldContain` [NatPairInMesh sn alice bob]
-      errs `shouldContain` [InsufficientPeers sn2 "requires at least 2 peers"]
+      let es = failureErrors (validateNetwork net)
+      es `shouldContain` [NatPairInMesh sn alice bob]
+      es `shouldContain` [InsufficientPeers sn2 "requires at least 2 peers"]
 
     it "accumulates IslandPeer alongside InsufficientPeers in a single pass" $ do
-      -- carol is in specPeers but no segment; sn2 is a malformed FullMesh with 1 peer
       let net =
             mkNetwork
               [(alice, mkPeer Nothing), (bob, mkPeer Nothing), (carol, mkPeer Nothing)]
               [ (sn, FullMesh [alice, bob]), -- valid segment
                 (sn2, FullMesh [alice]) -- InsufficientPeers
               ]
-      let errs = failureErrors (validateNetwork net)
-      errs `shouldContain` [IslandPeer carol]
-      errs `shouldContain` [InsufficientPeers sn2 "requires at least 2 peers"]
+      let es = failureErrors (validateNetwork net)
+      es `shouldContain` [IslandPeer carol]
+      es `shouldContain` [InsufficientPeers sn2 "requires at least 2 peers"]
+
+-- | All accumulated validation errors for a network.
+errs :: Network -> [ValidationError]
+errs = failureErrors . validateNetwork
+
+-- | The accumulated errors narrowed to a single constructor, so a per-rule test
+--   can ignore the unrelated errors 'validateNetwork' may also report.
+insufficient, roleConflicts, missingEndpoints, natPairs, islands :: Network -> [ValidationError]
+insufficient net = [e | e@InsufficientPeers{} <- errs net]
+roleConflicts net = [e | e@PeerBothRoles{} <- errs net]
+missingEndpoints net = [e | e@MissingEndpoint{} <- errs net]
+natPairs net = [e | e@NatPairInMesh{} <- errs net]
+islands net = [e | e@IslandPeer{} <- errs net]
+
+outOfCidr, reserved, collisions, overflow, unknownRefs :: Network -> [ValidationError]
+outOfCidr net = [e | e@AddressOutOfCidr{} <- errs net]
+reserved net = [e | e@AddressIsReserved{} <- errs net]
+collisions net = [e | e@AddressCollision{} <- errs net]
+overflow net = [e | e@CidrOverflow{} <- errs net]
+unknownRefs net = [e | e@UnknownPeerRef{} <- errs net]

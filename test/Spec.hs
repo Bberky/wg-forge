@@ -5,7 +5,9 @@ import qualified Spec.CLISpec as CLISpec
 import qualified Spec.DiffSpec as DiffSpec
 import qualified Spec.KeySpec as KeySpec
 import qualified Spec.KeystoreSpec as KeystoreSpec
+import qualified Spec.OutputSpec as OutputSpec
 import qualified Spec.ParserSpec as ParserSpec
+import qualified Spec.ReportSpec as ReportSpec
 import qualified Spec.ValidatorSpec as ValidatorSpec
 
 main :: IO ()
@@ -15,5 +17,7 @@ main = hspec $ do
   AllocatorSpec.spec
   KeySpec.spec
   KeystoreSpec.spec
+  OutputSpec.spec
   CLISpec.spec
   DiffSpec.spec
+  ReportSpec.spec

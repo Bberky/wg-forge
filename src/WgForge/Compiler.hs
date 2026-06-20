@@ -1,8 +1,9 @@
+-- | This module provides functionality to compile a high-level
+--   network specification into a concrete configuration for each peer.
 module WgForge.Compiler (
   CompiledPeer (..),
   CompiledPeerEntry (..),
   compile,
-  segmentContribution,
 ) where
 
 import Data.IP (AddrRange, IPv4, makeAddrRange, toIPv4w)
