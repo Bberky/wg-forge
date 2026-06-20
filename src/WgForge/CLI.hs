@@ -12,7 +12,7 @@ module WgForge.CLI (
 import Control.Exception (IOException, try)
 import Control.Monad (unless)
 import Data.Bifunctor (first)
-import qualified Data.ByteString.Char8 as C8
+import qualified Data.ByteString.Char8 as BS8
 import Data.List.NonEmpty (nonEmpty)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
@@ -23,20 +23,20 @@ import System.FilePath (takeDirectory, (</>))
 import System.IO (stderr)
 import Validation (Validation (Failure, Success))
 
-import WgForge.Allocator (allocate)
+import WgForge.Allocator
 import WgForge.CLI.Options
-import WgForge.CLI.Report (AppError (..), exitCodeFor, renderAppError)
-import WgForge.Compiler (compile)
-import WgForge.Diff (diffConfigs, isDirty, renderReport)
-import WgForge.Error (FileError (FileError))
-import WgForge.Key (PrivateKey, decodePrivateKey)
-import WgForge.Keystore (ensureKeys)
-import WgForge.Output (readConfigs, scaffold, summarizeWrites, writeConfigs, writeQrPng)
-import WgForge.QR (encodeQrToPng, encodeToQr, renderQrToAnsii)
-import WgForge.Renderer (renderConfig)
-import WgForge.Spec (Network (..), NetworkSpec (cidr))
-import WgForge.Spec.Parser (parseNetworkFile)
-import WgForge.Spec.Validator (validateNetwork)
+import WgForge.CLI.Report
+import WgForge.Compiler
+import WgForge.Diff
+import WgForge.Error
+import WgForge.Key
+import WgForge.Keystore
+import WgForge.Output
+import WgForge.QR
+import WgForge.Renderer
+import WgForge.Spec
+import WgForge.Spec.Parser
+import WgForge.Spec.Validator
 
 -- | Parse argv, run the chosen command, and exit with the mapped code,
 --   printing any error to stderr.
@@ -121,7 +121,7 @@ runDiff (DiffOptions out quiet spec) =
 --   diff never reads the real keystore.
 placeholderKey :: PrivateKey
 placeholderKey =
-  either error id (decodePrivateKey (C8.pack "GEtMFljNTXfN+YEDDFoa8k6ZCQPyCQf7OswTykMbhlg="))
+  either error id (decodePrivateKey (BS8.pack "GEtMFljNTXfN+YEDDFoa8k6ZCQPyCQf7OswTykMbhlg="))
 
 -- | @init@: scaffold a project directory with a starter spec, @out/@, @keys/@.
 runInit :: InitOptions -> IO (Either AppError ())

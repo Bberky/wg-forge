@@ -4,12 +4,14 @@ module WgForge.CLI.Report (
   exitCodeFor,
 ) where
 
-import Data.List.NonEmpty (NonEmpty, toList)
-import Data.Text (Text, pack)
-import System.Exit (ExitCode (ExitFailure))
+import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NE
+import Data.Text (Text)
+import qualified Data.Text as T
+import System.Exit (ExitCode (..))
 
 import WgForge.Error
-import WgForge.Spec (PeerName (PeerName))
+import WgForge.Spec
 
 data AppError
   = AppSpec SpecError
@@ -22,17 +24,17 @@ data AppError
 renderAppError :: AppError -> Text
 renderAppError (AppSpec err) =
   "Specification error" <> case err of
-    YamlSyntaxError details -> pack $ ": YAML syntax error at " <> details
-    SpecParseError details -> pack $ ": Specification parse error: " <> details
-    SpecIoError details -> pack $ ": Specification I/O error: " <> details
-renderAppError (AppValidation err) = "Validation error: " <> pack (show (toList err))
+    YamlSyntaxError details -> T.pack $ ": YAML syntax error at " <> details
+    SpecParseError details -> T.pack $ ": Specification parse error: " <> details
+    SpecIoError details -> T.pack $ ": Specification I/O error: " <> details
+renderAppError (AppValidation err) = "Validation error: " <> T.pack (show (NE.toList err))
 renderAppError (AppKeystore err) =
   "Keystore error" <> case err of
-    KeyIoError path details -> pack $ ": I/O error at " <> path <> ": " <> details
-    MalformedKey path details -> pack $ ": Malformed key at " <> path <> ": " <> details
-    MissingKey (PeerName peer) -> pack $ ": Missing key for peer " <> show peer
-renderAppError (AppIO path details) = pack $ "I/O error at " <> path <> ": " <> details
-renderAppError (AppQR details) = pack $ "QR code error: " <> details
+    KeyIoError path details -> T.pack $ ": I/O error at " <> path <> ": " <> details
+    MalformedKey path details -> T.pack $ ": Malformed key at " <> path <> ": " <> details
+    MissingKey (PeerName peer) -> T.pack $ ": Missing key for peer " <> show peer
+renderAppError (AppIO path details) = T.pack $ "I/O error at " <> path <> ": " <> details
+renderAppError (AppQR details) = T.pack $ "QR code error: " <> details
 renderAppError AppDiffDirty = "diff: on-disk configuration differs from the specification"
 
 exitCodeFor :: AppError -> ExitCode

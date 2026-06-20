@@ -11,32 +11,7 @@ module WgForge.CLI.Options (
   parsePrefs,
 ) where
 
-import Options.Applicative (
-  CommandFields,
-  Mod,
-  Parser,
-  ParserInfo,
-  ParserPrefs,
-  argument,
-  command,
-  fullDesc,
-  header,
-  help,
-  helper,
-  hsubparser,
-  info,
-  long,
-  metavar,
-  optional,
-  prefs,
-  progDesc,
-  short,
-  showHelpOnEmpty,
-  str,
-  strOption,
-  switch,
-  value,
- )
+import Options.Applicative
 
 newtype Options = Options
   { optCommand :: Command

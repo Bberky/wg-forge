@@ -25,7 +25,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.IP (AddrRange, IPv4)
 import Data.List (nub, sortOn)
-import Data.Text (pack, unpack)
+import qualified Data.Text as T
 import Data.Word (Word16)
 import Data.Yaml (ParseException (..), prettyPrintParseException)
 import Data.Yaml.Internal (Warning (..), decodeHelper)
@@ -33,7 +33,7 @@ import System.IO.Unsafe (unsafePerformIO)
 import qualified Text.Libyaml as Libyaml
 import Text.Read (readMaybe)
 
-import WgForge.Error (SpecError (..), ValidationError (..))
+import WgForge.Error
 import WgForge.Spec
 
 instance FromJSON NetworkSpec where
@@ -56,7 +56,7 @@ instance FromJSON AllowedIpsMode where
       "peers" -> pure Peers
       "subnet" -> pure Subnet
       "internet" -> pure Internet
-      _ -> fail $ "Invalid allowedIps: " ++ unpack t
+      _ -> fail $ "Invalid allowedIps: " ++ T.unpack t
 
 -- | Parse an IPv4 address from a string.
 -- The input should be in the form "x.x.x.x", where x are decimal octets.
@@ -74,15 +74,15 @@ parsePort s = case readMaybe s :: Maybe Integer of
 
 -- | Parse a host from string by first trying to parse as IPv4, then falls back to hostname.
 parseHost :: String -> HostOrIp
-parseHost s = either (const $ HostName (pack s)) HostIp (parseIPv4 s)
+parseHost s = either (const $ HostName (T.pack s)) HostIp (parseIPv4 s)
 
 instance FromJSON Endpoint where
   parseJSON = withText "Endpoint" $ \t ->
-    case break (== ':') (unpack t) of
+    case break (== ':') (T.unpack t) of
       (hostStr, ':' : portStr) -> do
         p <- either fail pure (parsePort portStr)
         pure $ Endpoint (parseHost hostStr) (Port p)
-      _ -> fail $ "Invalid endpoint: " ++ unpack t
+      _ -> fail $ "Invalid endpoint: " ++ T.unpack t
 
 instance FromJSON SegmentSpec where
   parseJSON = withObjectStrict

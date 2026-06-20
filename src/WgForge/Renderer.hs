@@ -3,17 +3,19 @@ module WgForge.Renderer (
   renderConfig,
 ) where
 
-import qualified Data.ByteString.Char8 as C8
+import Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as BS8
 import Data.IP (AddrRange, IPv4)
 import qualified Data.Map.Strict as Map
+import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import Prettyprinter
 import Prettyprinter.Render.Text (renderStrict)
 
 import WgForge.Compiler
-import WgForge.Key (encodePrivateKey, encodePublicKey)
-import WgForge.Spec (Endpoint (..), HostOrIp (..), PeerName (..), Port (..))
+import WgForge.Key
+import WgForge.Spec
 
 -- | Render a single compiled peer as a complete @wg-quick@ config file:
 --   the @[Interface]@ block followed by one @[Peer]@ block per entry.
@@ -48,7 +50,7 @@ renderPeerEntry pn e =
       comment pn,
       field "PublicKey" (renderKey (encodePublicKey (pubKey e)))
     ]
-      ++ optional "Endpoint" renderEndpoint (endpoint e)
+      ++ optional "Endpoint" renderEndpoint (WgForge.Compiler.endpoint e)
       ++ [field "AllowedIPs" (renderAllowedIps (allowedIps e))]
       ++ optional "PersistentKeepalive" pretty (keepalive e)
 
@@ -64,8 +66,8 @@ optional k render = maybe [] (\x -> [field k (render x)])
 comment :: PeerName -> Doc ann
 comment (PeerName t) = "#" <+> pretty t
 
-renderKey :: C8.ByteString -> Doc ann
-renderKey = pretty . C8.unpack
+renderKey :: ByteString -> Doc ann
+renderKey = pretty . BS8.unpack
 
 renderPort :: Port -> Doc ann
 renderPort (Port w) = pretty w
@@ -78,7 +80,7 @@ renderHost (HostName t) = pretty t
 renderHost (HostIp ip) = viaShow ip
 
 -- | Comma-separated @AllowedIPs@ in ascending order.
-renderAllowedIps :: Set.Set (AddrRange IPv4) -> Doc ann
+renderAllowedIps :: Set (AddrRange IPv4) -> Doc ann
 renderAllowedIps = hsep . punctuate comma . map viaShow . Set.toAscList
 
 -- | Stack blocks vertically, separated by a blank line.

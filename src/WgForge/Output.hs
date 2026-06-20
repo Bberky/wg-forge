@@ -28,8 +28,10 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.FileEmbed (embedFile)
+import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Text (Text, pack, unpack)
+import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import qualified Data.Text.IO as TIO
 import System.Directory (
@@ -55,7 +57,7 @@ data WriteStat = Written | Unchanged
 -- | Render and write every peer's config into @dir@, creating the directory
 --   first. Writes are idempotent (see 'writeConfigIfChanged'); the traversal
 --   stops at the first IO failure.
-writeConfigs :: FilePath -> Map.Map PeerName CompiledPeer -> IO (Either FileError [WriteStat])
+writeConfigs :: FilePath -> Map PeerName CompiledPeer -> IO (Either FileError [WriteStat])
 writeConfigs dir compiled =
   ensureDir dir >>= \case
     Left err -> pure (Left err)
@@ -80,7 +82,7 @@ summarizeWrites stats =
 --   match, otherwise write to a temp file and atomically rename it into place.
 writeConfigIfChanged :: FilePath -> (PeerName, CompiledPeer) -> IO (Either FileError WriteStat)
 writeConfigIfChanged dir (pn@(PeerName name), cp) = do
-  let target = dir </> (unpack name ++ ".conf")
+  let target = dir </> (T.unpack name ++ ".conf")
       bytes = encodeUtf8 (renderConfig pn cp)
   result <- try (go target bytes) :: IO (Either IOException WriteStat)
   pure (first (FileError target . show) result)
@@ -91,7 +93,7 @@ writeConfigIfChanged dir (pn@(PeerName name), cp) = do
     if same
       then pure Unchanged
       else do
-        (tmp, h) <- openTempFile dir (unpack name ++ ".conf.tmp")
+        (tmp, h) <- openTempFile dir (T.unpack name ++ ".conf.tmp")
         BS.hPut h bytes
         hClose h
         renameFile tmp target
@@ -101,16 +103,16 @@ writeConfigIfChanged dir (pn@(PeerName name), cp) = do
 --   for @diff@ to compare against the spec. A non-existent directory yields an
 --   empty map (a never-generated project, where every peer is \"added\"); any IO
 --   failure surfaces as a 'FileError'.
-readConfigs :: FilePath -> IO (Either FileError (Map.Map PeerName Text))
+readConfigs :: FilePath -> IO (Either FileError (Map PeerName Text))
 readConfigs dir = do
-  first (FileError dir . show) <$> (try go :: IO (Either IOException (Map.Map PeerName Text)))
+  first (FileError dir . show) <$> (try go :: IO (Either IOException (Map PeerName Text)))
  where
   go = do
     names <- listDirectory dir
     Map.fromList <$> mapM readOne (filter ((== ".conf") . takeExtension) names)
   readOne name = do
     text <- TIO.readFile (dir </> name)
-    pure (PeerName (pack (dropExtension name)), text)
+    pure (PeerName (T.pack (dropExtension name)), text)
 
 -- | Scaffold a project at @path@: a starter @network.yaml@, an @out/@
 --   directory, and a @0700@ @keys/@ keystore. Refuses an existing non-empty

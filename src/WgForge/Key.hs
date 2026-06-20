@@ -11,7 +11,7 @@ import Crypto.Error (eitherCryptoError)
 import qualified Crypto.PubKey.Curve25519 as Curve25519
 import qualified Data.ByteArray.Encoding as BAE
 import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as C8
+import qualified Data.ByteString.Char8 as BS8
 import Data.Coerce (coerce)
 
 newtype PrivateKey = PrivateKey Curve25519.SecretKey deriving (Eq)
@@ -23,7 +23,7 @@ instance Show PrivateKey where
 
 -- | Public keys are safe to show and render as their base64 form.
 instance Show PublicKey where
-  show = C8.unpack . encodePublicKey
+  show = BS8.unpack . encodePublicKey
 
 -- | Derive the public key corresponding to a given private key.
 derivePublicKey :: PrivateKey -> PublicKey

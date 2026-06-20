@@ -18,7 +18,9 @@ import Data.Bits (shiftL)
 import Data.Foldable (traverse_)
 import Data.IP (IPv4, isMatchedTo, mlen)
 import Data.List (intersect, sort, tails)
-import Data.List.NonEmpty (NonEmpty ((:|)))
+import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NE
+import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
@@ -62,12 +64,12 @@ validatePeerRoles ::
 validatePeerRoles sn seg@(HubSpoke hubs spokes _) =
   seg
     <$ traverse_
-      (\p -> Failure $ PeerBothRoles sn p :| [])
+      (\p -> Failure $ PeerBothRoles sn p NE.:| [])
       (hubs `intersect` spokes)
 validatePeerRoles sn seg@(Relay relays clients _) =
   seg
     <$ traverse_
-      (\p -> Failure $ PeerBothRoles sn p :| [])
+      (\p -> Failure $ PeerBothRoles sn p NE.:| [])
       (relays `intersect` clients)
 validatePeerRoles _ seg = pure seg
 
@@ -76,7 +78,7 @@ validateEndpoints :: Network -> Validation (NonEmpty ValidationError) Network
 validateEndpoints net@(Network _ peerMap segMap) =
   net
     <$ traverse_
-      (\p -> Failure $ MissingEndpoint p :| [])
+      (\p -> Failure $ MissingEndpoint p NE.:| [])
       missingPeers
  where
   hubsAndRelays = Set.toAscList $ foldMap centralPeers (Map.elems segMap)
@@ -93,7 +95,7 @@ validateNatPairs :: Network -> Validation (NonEmpty ValidationError) Network
 validateNatPairs net@(Network _ peerMap segMap) =
   net
     <$ traverse_
-      (\(sn, p1, p2) -> Failure $ NatPairInMesh sn p1 p2 :| [])
+      (\(sn, p1, p2) -> Failure $ NatPairInMesh sn p1 p2 NE.:| [])
       badPairs
  where
   badPairs = do
@@ -122,7 +124,7 @@ validateReachability :: Network -> Validation (NonEmpty ValidationError) Network
 validateReachability net@(Network _ peerMap segMap) =
   net
     <$ traverse_
-      (\p -> Failure $ IslandPeer p :| [])
+      (\p -> Failure $ IslandPeer p NE.:| [])
       islands
  where
   assigned = foldMap segmentPeers (Map.elems segMap)
@@ -145,7 +147,7 @@ validateAddressesInCidr :: Network -> Validation (NonEmpty ValidationError) Netw
 validateAddressesInCidr net@(Network ns peerMap _) =
   net
     <$ traverse_
-      (\(pn, a) -> Failure $ AddressOutOfCidr pn a :| [])
+      (\(pn, a) -> Failure $ AddressOutOfCidr pn a NE.:| [])
       (filter (\(_, a) -> not (a `isMatchedTo` cidr ns)) (explicitAddresses peerMap))
 
 -- | Validate that no explicit address is the network or broadcast address.
@@ -154,7 +156,7 @@ validateReservedAddresses :: Network -> Validation (NonEmpty ValidationError) Ne
 validateReservedAddresses net@(Network ns peerMap _) =
   net
     <$ traverse_
-      (\(pn, a) -> Failure $ AddressIsReserved pn a :| [])
+      (\(pn, a) -> Failure $ AddressIsReserved pn a NE.:| [])
       (filter (isReserved . snd) (explicitAddresses peerMap))
  where
   range = cidr ns
@@ -166,7 +168,7 @@ validateAddressCollisions :: Network -> Validation (NonEmpty ValidationError) Ne
 validateAddressCollisions net@(Network _ peerMap _) =
   net
     <$ traverse_
-      (\(a, p1, p2) -> Failure $ AddressCollision p1 p2 a :| [])
+      (\(a, p1, p2) -> Failure $ AddressCollision p1 p2 a NE.:| [])
       collisions
  where
   claims =
@@ -186,7 +188,7 @@ validateCidrCapacity net@(Network ns peerMap _) =
   total = 1 `shiftL` (32 - prefixLen) :: Int
   hostCount = if prefixLen >= 31 then total else total - 2
 
-explicitAddresses :: Map.Map PeerName PeerSpec -> [(PeerName, IPv4)]
+explicitAddresses :: Map PeerName PeerSpec -> [(PeerName, IPv4)]
 explicitAddresses peerMap =
   [(pn, a) | (pn, ps) <- Map.toAscList peerMap, Just a <- [address ps]]
 
@@ -199,7 +201,7 @@ validateStructure :: Network -> Validation (NonEmpty ValidationError) Network
 validateStructure net@(Network _ peerMap segMap) =
   net
     <$ traverse_
-      (\(sn, p) -> Failure $ UnknownPeerRef sn p :| [])
+      (\(sn, p) -> Failure $ UnknownPeerRef sn p NE.:| [])
       unknownPeers
  where
   peersBySegment = [(sn, p) | sn <- Map.keys segMap, p <- peersInSegment (segMap Map.! sn)]
