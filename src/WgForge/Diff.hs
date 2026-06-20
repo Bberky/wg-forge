@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module WgForge.Diff (
   PeerDiff (..),
   diffConfigs,
