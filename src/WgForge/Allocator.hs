@@ -1,3 +1,5 @@
+-- | Module responsible for allocating IP addresses to peers
+-- based on a given CIDR range and peer specifications.
 module WgForge.Allocator (
   allocate,
 ) where
