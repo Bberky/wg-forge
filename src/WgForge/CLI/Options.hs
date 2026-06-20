@@ -1,5 +1,6 @@
--- | Command-line surface: the parsed 'Command' tree and the
---   @optparse-applicative@ parser that produces it.
+-- | Command-line options for wg-forge.
+--  This module defines the data types representing the command-line options and
+--  the parsers for those options using the optparse-applicative library.
 module WgForge.CLI.Options (
   Options (..),
   Command (..),
@@ -13,37 +14,58 @@ module WgForge.CLI.Options (
 
 import Options.Applicative
 
+-- | The top-level options data type, representing the command and its associated options.
 newtype Options = Options
-  { optCommand :: Command
+  { cmd :: Command
   }
 
+-- | The different commands supported by wg-forge, each with its own associated options.
 data Command
-  = Init InitOptions
-  | Validate FilePath
-  | Generate GenerateOptions
-  | Diff DiffOptions
-  | QR QROptions
+  = -- | Initialize a new wg-forge project
+    Init InitOptions
+  | -- | Validate a network specification YAML file
+    Validate FilePath
+  | -- | Generate configurations from a network specification
+    Generate GenerateOptions
+  | -- | Show how the specification differs from the configurations on disk
+    Diff DiffOptions
+  | -- | Generate a QR code from a peer config file
+    QR QROptions
 
+-- | Options for the 'init' command.
 data InitOptions = InitOptions
-  { initForce :: Bool,
-    initPath :: FilePath
+  { -- | Whether to force initialization even if the directory is not empty.
+    force :: Bool,
+    -- | The path to initialize the project in.
+    path :: FilePath
   }
 
+-- | Options for the 'generate' command.
 data GenerateOptions = GenerateOptions
-  { genOutDir :: FilePath,
-    genKeyDir :: FilePath,
-    genSpec :: FilePath
+  { -- | The output directory for the generated configurations.
+    outDir :: FilePath,
+    -- | The directory containing the WireGuard keys.
+    keyDir :: FilePath,
+    -- | The path to the network specification YAML file.
+    spec :: FilePath
   }
 
+-- | Options for the 'diff' command.
 data DiffOptions = DiffOptions
-  { diffOutDir :: FilePath,
-    diffQuiet :: Bool,
-    diffSpec :: FilePath
+  { -- | The output directory for the generated configurations.
+    outDir :: FilePath,
+    -- | Whether to suppress output of unchanged files.
+    quiet :: Bool,
+    -- | The path to the network specification YAML file.
+    spec :: FilePath
   }
 
+-- | Options for the 'qr' command.
 data QROptions = QROptions
-  { qrOutput :: Maybe FilePath,
-    qrPeerConfig :: FilePath
+  { -- | The path to save the QR code image.
+    out :: Maybe FilePath,
+    -- | The path to the WireGuard peer configuration file.
+    peerConf :: FilePath
   }
 
 initOpts :: Parser Command
@@ -89,10 +111,7 @@ validateOpts :: Parser Command
 validateOpts = Validate <$> specArg
 
 validateCmd :: Mod CommandFields Command
-validateCmd =
-  command
-    "validate"
-    (info validateOpts (progDesc "Validate a network specification YAML file"))
+validateCmd = command "validate" (info validateOpts (progDesc "Validate a network specification YAML file"))
 
 qrOpts :: Parser Command
 qrOpts =

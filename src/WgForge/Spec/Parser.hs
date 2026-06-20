@@ -3,7 +3,6 @@
 module WgForge.Spec.Parser (
   parseNetwork,
   parseNetworkFile,
-  parseCidr,
 ) where
 
 import Control.Exception (IOException, displayException, try)
