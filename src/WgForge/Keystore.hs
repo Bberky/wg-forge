@@ -1,3 +1,4 @@
+-- | This module provides functions for managing a keystore of private keys for peers.
 module WgForge.Keystore (
   ensureKeystoreDir,
   generatePrivateKey,
@@ -47,11 +48,8 @@ generatePrivateKey :: IO PrivateKey
 generatePrivateKey = PrivateKey <$> Curve25519.generateSecretKey
 
 -- | Load a private key for a peer.
---
--- A missing file yields @Right Nothing@ (no key yet); other IO failures yield
--- @Left KeyIoError@; a file that exists but does not decode yields
--- @Left MalformedKey@. Surrounding whitespace is trimmed before decoding, so
--- files produced by @wg genkey@ (trailing newline) load cleanly.
+-- Returns 'Right Nothing' if the key file does not exist,
+-- 'Right (Just pk)' on success, and 'Left err' on IO or parsing errors.
 loadKey :: FilePath -> PeerName -> IO (Either KeystoreError (Maybe PrivateKey))
 loadKey dir peerName = do
   let path = keyPath dir peerName
@@ -97,6 +95,7 @@ ensureKey dir peerName = do
 
 -- | Ensure private keys exist for the given peers, creating any that are
 -- missing. Returns the first error encountered, or the full key map on success.
+-- Keystore directory is created if it does not exist.
 ensureKeys :: FilePath -> [PeerName] -> IO (Either KeystoreError (Map PeerName PrivateKey))
 ensureKeys dir peerNames = do
   ensureKeystoreDir dir
@@ -105,4 +104,4 @@ ensureKeys dir peerNames = do
 
 -- | Get the path to a peer's key file in the keystore directory.
 keyPath :: FilePath -> PeerName -> FilePath
-keyPath dir (PeerName name) = dir </> (T.unpack name ++ ".key")
+keyPath dir (PeerName pn) = dir </> (T.unpack pn ++ ".key")

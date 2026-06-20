@@ -1,3 +1,7 @@
+-- | This module provides utility functions for working with
+--   CIDR ranges in the context of WireGuard configuration.
+--   It includes functions to retrieve the network address,
+--   broadcast address, base address, and subnet mask of a given CIDR range.
 module WgForge.Cidr (
   networkAddress,
   broadcastAddress,

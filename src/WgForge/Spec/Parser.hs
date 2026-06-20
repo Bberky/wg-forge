@@ -1,5 +1,7 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
+-- | This module provides functions to parse a YAML specification of a network into Haskell data structures.
+--   It defines instances of 'FromJSON' for the relevant data types, allowing them to be decoded from YAML.
 module WgForge.Spec.Parser (
   parseNetwork,
   parseNetworkFile,
@@ -42,7 +44,7 @@ instance FromJSON NetworkSpec where
       <*> (v .: "cidr" >>= either fail pure . parseCidr)
 
 -- | Parse a CIDR notation string into an 'AddrRange IPv4'.
--- The input should be in the form "x.x.x.x/y", where x.x.x.x is an IPv4 address and y is the prefix length.
+--   The input should be in the form "x.x.x.x/y", where x.x.x.x is an IPv4 address and y is the prefix length.
 parseCidr :: String -> Either String (AddrRange IPv4)
 parseCidr s =
   case readMaybe s of
@@ -58,14 +60,14 @@ instance FromJSON AllowedIpsMode where
       _ -> fail $ "Invalid allowedIps: " ++ T.unpack t
 
 -- | Parse an IPv4 address from a string.
--- The input should be in the form "x.x.x.x", where x are decimal octets.
+--   The input should be in the form "x.x.x.x", where x are decimal octets.
 parseIPv4 :: String -> Either String IPv4
 parseIPv4 s = case readMaybe s of
   Just ip -> Right ip
   Nothing -> Left $ "Invalid IPv4 address: " ++ s
 
 -- | Parse a TCP/UDP port number from a string.
--- The input should be a valid 16 bit unsigned integer.
+--   The input should be a valid 16 bit unsigned integer.
 parsePort :: String -> Either String Word16
 parsePort s = case readMaybe s :: Maybe Integer of
   Just n | n >= 0, n <= 65535 -> Right (fromInteger n)

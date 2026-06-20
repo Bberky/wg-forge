@@ -1,6 +1,6 @@
 -- | Command-line options for wg-forge.
---  This module defines the data types representing the command-line options and
---  the parsers for those options using the optparse-applicative library.
+--   This module defines the data types representing the command-line options and
+--   the parsers for those options using the optparse-applicative library.
 module WgForge.CLI.Options (
   Options (..),
   Command (..),

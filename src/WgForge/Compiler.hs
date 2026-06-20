@@ -1,3 +1,5 @@
+-- | This module provides functionality to compile a high-level
+--   network specification into a concrete configuration for each peer.
 module WgForge.Compiler (
   CompiledPeer (..),
   CompiledPeerEntry (..),

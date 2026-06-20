@@ -1,3 +1,5 @@
+-- | This module provides utilities for handling keys, both private and public.
+--   It includes functions for deriving public keys from private keys, encoding and decoding keys in base64 format.
 module WgForge.Key (
   PrivateKey (..),
   PublicKey (..),

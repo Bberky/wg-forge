@@ -1,11 +1,10 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
 
--- | Everything wg-forge writes to disk, kept out of the CLI orchestration: the
---   idempotent per-peer config writes for @generate@ and the project scaffold
---   for @init@. This is the IO counterpart to the pure "WgForge.Renderer",
---   mirroring "WgForge.Keystore" — the CLI decides what to do, the mechanics
---   live here. Failures surface as 'FileError'.
+-- | This module provides functions for writing WireGuard configuration files to disk,
+--   as well as scaffolding a new project directory. It includes functionality for idempotent
+--   writes (only writing when the content has changed) and reading existing configurations
+--   back into memory for comparison. All IO operations are wrapped to surface errors as 'FileError'.
 module WgForge.Output (
   WriteStat (..),
   writeConfigs,

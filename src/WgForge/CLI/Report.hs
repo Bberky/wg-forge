@@ -45,6 +45,8 @@ renderAppError (AppQR details) = T.pack $ "QR code error: " <> details
 renderAppError AppDiffDirty = "diff: on-disk configuration differs from the specification"
 
 -- | Determine the appropriate exit code for a given 'AppError'.
+--   Exit codes try to reflect the standard Unix conventions,
+--   for specific error codes see the 'exitCodeFor' function.
 exitCodeFor :: AppError -> ExitCode
 exitCodeFor (AppSpec specErr) = case specErr of
   YamlSyntaxError _ -> ExitFailure 2

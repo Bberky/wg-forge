@@ -1,5 +1,5 @@
 -- | Module responsible for allocating IP addresses to peers
--- based on a given CIDR range and peer specifications.
+--   based on a given CIDR range and peer specifications.
 module WgForge.Allocator (
   allocate,
 ) where
@@ -14,8 +14,8 @@ import WgForge.Cidr
 import WgForge.Spec
 
 -- | Allocate IP addresses to peers based on the provided CIDR range and peer specifications.
--- Static addresses specified in the peer specifications are preserved
--- while dynamic addresses are assigned in the ascending order based on the peer names.
+--   Static addresses specified in the peer specifications are preserved
+--   while dynamic addresses are assigned in the ascending order based on the peer names.
 allocate :: AddrRange IPv4 -> Map PeerName PeerSpec -> Map PeerName IPv4
 allocate range p =
   Map.union static dynamic
