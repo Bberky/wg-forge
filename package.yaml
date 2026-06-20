@@ -62,7 +62,7 @@ library:
   source-dirs: src
 
 executables:
-  wg-forge-exe:
+  wg-forge:
     main: Main.hs
     source-dirs: app
     ghc-options:
