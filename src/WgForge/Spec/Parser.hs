@@ -88,13 +88,13 @@ instance FromJSON Endpoint where
 instance FromJSON SegmentSpec where
   parseJSON = withObjectStrict
     "SegmentSpec"
-    ["topology", "peers", "hubs", "spokes", "relays", "client", "allowedIps"]
+    ["topology", "peers", "hubs", "spokes", "relays", "clients", "allowedIps"]
     $ \o -> do
       topology <- o .: "topology" :: Parser String
       case topology of
         "full-mesh" -> FullMesh <$> o .: "peers"
         "hub-and-spoke" -> HubSpoke <$> o .: "hubs" <*> o .: "spokes" <*> allowedIpsOrDefault o
-        "relay" -> Relay <$> o .: "relays" <*> o .: "client" <*> allowedIpsOrDefault o
+        "relay" -> Relay <$> o .: "relays" <*> o .: "clients" <*> allowedIpsOrDefault o
         _ -> fail $ "Invalid topology: " ++ topology
    where
     allowedIpsOrDefault :: Object -> Parser AllowedIpsMode

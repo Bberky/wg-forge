@@ -121,7 +121,7 @@ spec = do
             object
               [ "topology" .= ("relay" :: Text),
                 "relays" .= (["relay1"] :: [Text]),
-                "client" .= (["leaf1"] :: [Text]),
+                "clients" .= (["leaf1"] :: [Text]),
                 "allowedIps" .= ("internet" :: Text)
               ]
       let expected = Relay [PeerName "relay1"] [PeerName "leaf1"] Internet
