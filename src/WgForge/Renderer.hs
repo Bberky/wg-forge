@@ -35,6 +35,8 @@ header =
       "# Source of truth: the network spec."
     ]
 
+-- | Render a compiled peer's @[Interface]@ block: its identifying comment,
+--   private key, address, and optional @ListenPort@.
 renderInterface :: PeerName -> CompiledPeer -> Doc ann
 renderInterface pn p =
   vsep $
@@ -45,6 +47,9 @@ renderInterface pn p =
     ]
       ++ optional "ListenPort" renderPort (ifaceListenPort p)
 
+-- | Render a single @[Peer]@ block for one tunnel target: its identifying
+--   comment, public key, optional @Endpoint@, @AllowedIPs@, and optional
+--   @PersistentKeepalive@.
 renderPeerEntry :: PeerName -> CompiledPeerEntry -> Doc ann
 renderPeerEntry pn e =
   vsep $

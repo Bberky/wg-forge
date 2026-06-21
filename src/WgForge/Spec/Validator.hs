@@ -20,6 +20,9 @@ import WgForge.Cidr
 import WgForge.Error
 import WgForge.Spec
 
+-- | Run every structural, endpoint, reachability, and addressing check over a
+--   parsed 'Network', accumulating all 'ValidationError's applicatively.
+--   Returns the network unchanged on success.
 validateNetwork :: Network -> Validation (NonEmpty ValidationError) Network
 validateNetwork net@(Network _ _ segMap) =
   net

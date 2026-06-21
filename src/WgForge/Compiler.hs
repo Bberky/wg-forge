@@ -16,22 +16,37 @@ import Data.Word (Word16)
 import WgForge.Key
 import WgForge.Spec
 
+-- | The fully resolved configuration for a single peer: its own @[Interface]@
+--   plus one entry per peer it tunnels to.
 data CompiledPeer = CompiledPeer
-  { ifacePrivKey :: PrivateKey,
+  { -- | The peer's own private key.
+    ifacePrivKey :: PrivateKey,
+    -- | The peer's allocated tunnel address.
     ifaceAddress :: IPv4,
+    -- | UDP port to listen on; absent for peers that only dial out.
     ifaceListenPort :: Maybe Port,
+    -- | The @[Peer]@ stanzas, keyed by the target peer's name.
     peerEntries :: Map PeerName CompiledPeerEntry
   }
   deriving (Eq, Show)
 
+-- | A single resolved tunnel target, rendered as one @[Peer]@ stanza.
 data CompiledPeerEntry = CompiledPeerEntry
-  { pubKey :: PublicKey,
+  { -- | The target peer's public key.
+    pubKey :: PublicKey,
+    -- | The target's endpoint, if it has a publicly reachable one.
     endpoint :: Maybe Endpoint,
+    -- | Ranges routed to this target via the tunnel.
     allowedIps :: Set (AddrRange IPv4),
+    -- | Keepalive interval in seconds, propagated from the spec.
     keepalive :: Maybe Word16
   }
   deriving (Eq, Show)
 
+-- | Compile a validated 'Network' into a 'CompiledPeer' for every peer.
+--   Combines the per-peer private keys, the allocated addresses, and the
+--   @AllowedIPs@ contributed by each segment's topology. Pure and
+--   deterministic: the same inputs always yield the same output.
 compile ::
   Map PeerName PrivateKey -> Map PeerName IPv4 -> Network -> Map PeerName CompiledPeer
 compile keys addrs net =

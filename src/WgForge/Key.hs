@@ -16,7 +16,11 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS8
 import Data.Coerce (coerce)
 
+-- | A Curve25519 secret key. Its 'Show' instance is redacted to keep the
+--   secret out of logs and error output.
 newtype PrivateKey = PrivateKey Curve25519.SecretKey deriving (Eq)
+
+-- | A Curve25519 public key, derived from a 'PrivateKey'.
 newtype PublicKey = PublicKey Curve25519.PublicKey deriving (Eq)
 
 -- | Redacting 'Show' so a secret never leaks into logs, errors, or test output.

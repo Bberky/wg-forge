@@ -28,15 +28,19 @@ import GHC.Generics (Generic)
 
 -- | Top-level parsed network document.
 data Network = Network
-  { network :: NetworkSpec,
+  { -- | Global network metadata.
+    network :: NetworkSpec,
+    -- | Declared peers, keyed by name.
     peers :: Map PeerName PeerSpec,
+    -- | Network segments defining the topology, keyed by name.
     segments :: Map SegmentName SegmentSpec
   }
   deriving (Eq, Show)
 
 -- | Global network metadata.
 data NetworkSpec = NetworkSpec
-  { name :: Maybe Text,
+  { -- | Optional human-readable network name.
+    name :: Maybe Text,
     -- | Address pool for automatic IP allocation.
     cidr :: AddrRange IPv4
   }
@@ -51,17 +55,24 @@ newtype PeerName = PeerName Text
 data PeerSpec = PeerSpec
   { -- | Public endpoint; absent for peers behind NAT.
     endpoint :: Maybe Endpoint,
+    -- | UDP port to listen on; absent lets WireGuard pick one.
     listenPort :: Maybe Port,
     -- | Keepalive interval in seconds.
     persistentKeepalive :: Maybe Word16,
     -- | Static address; allocated automatically if absent.
     address :: Maybe IPv4,
+    -- | Free-form labels for grouping or filtering peers.
     tags :: [Text]
   }
   deriving (Eq, Show)
 
 -- | A reachable host/port pair used as a WireGuard endpoint.
-data Endpoint = Endpoint {host :: HostOrIp, port :: Port}
+data Endpoint = Endpoint
+  { -- | Hostname or literal IPv4 of the endpoint.
+    host :: HostOrIp,
+    -- | UDP port of the endpoint.
+    port :: Port
+  }
   deriving (Eq, Show)
 
 -- | Endpoint address as either a DNS hostname or a literal IPv4.

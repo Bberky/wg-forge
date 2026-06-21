@@ -15,6 +15,8 @@ data SpecError
     SpecParseError String
   deriving (Eq, Show)
 
+-- | A semantic problem with an otherwise well-formed spec, accumulated by
+--   "WgForge.Spec.Validator". All such errors are collected before failing.
 data ValidationError
   = -- | Segment does not contain enough peers to satisfy its topology requirements.
     InsufficientPeers SegmentName String
@@ -45,6 +47,7 @@ data ValidationError
     InvalidPeerName PeerName
   deriving (Eq, Show)
 
+-- | A failure while reading or writing peer key files in the keystore.
 data KeystoreError
   = -- | A key file could not be read (missing, permissions, ...).
     KeyIoError FilePath String
