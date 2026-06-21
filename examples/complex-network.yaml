@@ -1,0 +1,40 @@
+network:
+  name: my-complex-network
+  cidr: 192.168.0.0/16
+
+segments:
+  mesh:
+    topology: full-mesh
+    peers: [node-a, node-b, node-c]
+  hub:
+    topology: hub-and-spoke
+    hubs: [node-a]
+    spokes: [node-d, node-e]
+    allowedIps: internet
+  relay:
+    topology: relay
+    relays: [node-b]
+    clients: [node-f, node-g]
+
+peers:
+  node-a:
+    endpoint: a.example.com:51820
+    listenPort: 51820
+    address: 192.168.1.1
+  node-b:
+    endpoint: b.example.com:51820
+    listenPort: 51820
+    address: 192.168.1.2
+  node-c:
+    endpoint: c.example.com:51820
+    listenPort: 51820
+  node-d:
+    endpoint: d.example.com:51820
+    persistentKeepalive: 25
+  node-e:
+    endpoint: e.example.com:51820
+    persistentKeepalive: 25
+  node-f:
+    endpoint: f.example.com:51820
+  node-g:
+    endpoint: g.example.com:51820

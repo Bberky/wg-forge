@@ -1,0 +1,19 @@
+network:
+  name: my-simple-mesh
+  cidr: 172.16.0.0/24
+
+segments:
+  mesh:
+    topology: full-mesh
+    peers: [node-a, node-b, node-c]
+
+peers:
+  node-a:
+    endpoint: a.example.com:51820
+    listenPort: 51820
+  node-b:
+    endpoint: b.example.com:51820
+    listenPort: 51820
+  node-c:
+    endpoint: c.example.com:51820
+    listenPort: 51820
